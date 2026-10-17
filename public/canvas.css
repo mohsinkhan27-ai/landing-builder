@@ -1,0 +1,31 @@
+/* Only loaded inside the editor canvas, never in exported pages. */
+
+.lp-strip { outline: 1px dashed rgba(36, 87, 245, 0.2); outline-offset: -1px; }
+.lp-stage:empty::after {
+  content: 'Drag elements here';
+  position: absolute; inset: 24px;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px dashed #c3cfe3; border-radius: 14px;
+  color: #8493ab; font: 500 16px/1.4 system-ui, sans-serif;
+  pointer-events: none;
+}
+.lp-drop-target { outline: 3px solid #2457f5 !important; outline-offset: -3px; }
+.lp-faq summary { cursor: text; }
+[contenteditable='true'] { outline: none; cursor: text; }
+.lp-free { cursor: move; }
+.lp-free[contenteditable='true'] { cursor: text; }
+
+/* While editing, animations stay still. "Preview motion" adds the lp-motion class to turn them on. */
+body:not(.lp-motion) [data-loop] { animation: none !important; }
+body:not(.lp-motion) .lp-strip[data-sticky] { position: relative; }
+.lp-group:empty::after {
+  content: 'Drop elements here';
+  position: absolute; inset: 10px;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px dashed #c3cfe3; border-radius: 12px;
+  color: #8493ab; font: 500 15px/1.4 system-ui, sans-serif;
+  pointer-events: none;
+}
+
+/* Embedded pages and videos must not swallow clicks while editing. */
+.lp-embed iframe { pointer-events: none; }

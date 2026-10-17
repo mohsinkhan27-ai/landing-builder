@@ -1,0 +1,30 @@
+{
+  "name": "landing-builder",
+  "version": "1.0.0",
+  "description": "Local drag-and-drop landing page builder (GrapesJS). Pages are saved to ./pages on your machine.",
+  "scripts": {
+    "dev": "node server.js",
+    "build": "vite build",
+    "start": "vite build && node server.js --prod"
+  },
+  "dependencies": {
+    "archiver": "^8.0.0",
+    "express": "^5.3.0",
+    "fflate": "^0.8.3",
+    "font-awesome": "^4.7.0",
+    "grapesjs": "^0.23.6",
+    "grapesjs-component-countdown": "^1.0.2",
+    "grapesjs-custom-code": "^1.0.2",
+    "grapesjs-plugin-forms": "^2.0.6",
+    "grapesjs-style-bg": "^2.0.2",
+    "grapesjs-style-gradient": "^3.0.3",
+    "grapesjs-tabs": "^1.0.6",
+    "grapick": "^0.1.13",
+    "multer": "^2.4.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.4"
+  },
+  "private": true,
+  "type": "module"
+}
