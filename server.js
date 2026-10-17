@@ -71,6 +71,7 @@ app.disable('x-powered-by');
 // tricks) from talking to it while you have the builder open.
 const HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`, `[::1]:${PORT}`]);
 app.use((req, res, next) => {
+  if (process.env.RENDER === 'true') return next();
   if (!HOSTS.has(String(req.headers.host || '').toLowerCase())) return res.status(403).json({ error: 'Unexpected host.' });
   const origin = req.headers.origin;
   if (origin && !['GET', 'HEAD'].includes(req.method)) {
@@ -242,7 +243,7 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: err.message || 'Something went wrong.' });
 });
 
-app.listen(PORT, '127.0.0.1', () => {
+app.listen(PORT, () => {
   console.log(`\n  Landing Builder running at  http://localhost:${PORT}`);
   console.log(`  Pages are saved in          ${PAGES_DIR}\n`);
 });
