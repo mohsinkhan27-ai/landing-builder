@@ -1,0 +1,26 @@
+# Render blueprint for hosting the builder online.
+# IMPORTANT: a persistent disk (so your pages and settings survive restarts and updates) needs a paid plan.
+# On the free plan there is no disk: everything resets whenever the service restarts, so download your pages often.
+services:
+  - type: web
+    name: landing-builder
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: node server.js --prod
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: HOST
+        value: 0.0.0.0
+      - key: BUILDER_PASSWORD
+        sync: false        # you type this in the Render dashboard; never put it in the repository
+      - key: PAGES_DIR
+        value: /var/data/pages
+      - key: DATA_DIR
+        value: /var/data/settings
+    disk:
+      name: builder-data
+      mountPath: /var/data
+      sizeGB: 1

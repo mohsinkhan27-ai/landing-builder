@@ -20,11 +20,12 @@
     "grapesjs-style-gradient": "^3.0.3",
     "grapesjs-tabs": "^1.0.6",
     "grapick": "^0.1.13",
-    "multer": "^2.4.0"
-  },
-  "devDependencies": {
+    "multer": "^2.4.0",
     "vite": "^8.3.4"
   },
   "private": true,
-  "type": "module"
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  }
 }

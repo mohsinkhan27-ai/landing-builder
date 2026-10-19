@@ -8,6 +8,7 @@ import multer from 'multer';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { mountExport } from './server/export.js';
 import { mountAi } from './server/ai.js';
@@ -17,6 +18,17 @@ const PAGES_DIR = path.resolve(process.env.PAGES_DIR || path.join(__dirname, 'pa
 const TRASH_DIR = path.join(PAGES_DIR, '.trash');
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const PORT = Number(process.env.PORT) || 3000;
+// Running on your own computer (default) needs no password. To put it on the internet, set HOST=0.0.0.0 AND a
+// BUILDER_PASSWORD: the builder can edit and delete pages and can spend your AI key, so it must never be open to everyone.
+const HOST = process.env.HOST || '127.0.0.1';
+const PASSWORD = process.env.BUILDER_PASSWORD || '';
+const LOCAL_ONLY = ['127.0.0.1', 'localhost', '::1'].includes(HOST);
+if (!LOCAL_ONLY && !PASSWORD) {
+  console.error('\n  Refusing to start: HOST is set to a public address but BUILDER_PASSWORD is not set.');
+  console.error('  Without a password, anyone with the link could edit your pages and use your AI key.');
+  console.error('  Set BUILDER_PASSWORD to a long password and start again.\n');
+  process.exit(1);
+}
 const PROD = process.argv.includes('--prod');
 
 const NAME_RE = /^[a-z0-9][a-z0-9_-]{0,59}$/;
@@ -66,18 +78,44 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 const app = express();
 app.disable('x-powered-by');
 
-// This server has no login, and some routes spend API credits or read your files. Only requests that really
-// come from the builder open on this computer are accepted: that blocks other websites (and DNS-rebinding
-// tricks) from talking to it while you have the builder open.
+if (!LOCAL_ONLY) app.set('trust proxy', true); // behind a hosting provider's proxy, so the real visitor address is known
+
+// For hosting services that ask "is it running?" without a password.
+app.get('/healthz', (req, res) => res.type('text').send('ok'));
+
+// Password protection (only when BUILDER_PASSWORD is set). The browser shows its own sign-in box.
+// Anyone who guesses wrong too many times is locked out for a while.
+if (PASSWORD) {
+  const digest = (text) => crypto.createHash('sha256').update(String(text)).digest();
+  const failures = new Map(); // address -> { count, since }
+  app.use((req, res, next) => {
+    const now = Date.now();
+    const record = failures.get(req.ip);
+    if (record && now - record.since > 10 * 60 * 1000) failures.delete(req.ip);
+    if ((failures.get(req.ip)?.count || 0) >= 10) return res.status(429).type('text').send('Too many wrong passwords. Try again in 10 minutes.');
+    const [scheme, encoded] = String(req.headers.authorization || '').split(' ');
+    if (/^basic$/i.test(scheme) && encoded) {
+      const text = Buffer.from(encoded, 'base64').toString('utf8');
+      if (crypto.timingSafeEqual(digest(text.slice(text.indexOf(':') + 1)), digest(PASSWORD))) return next();
+      const entry = failures.get(req.ip) || { count: 0, since: now };
+      entry.count += 1;
+      failures.set(req.ip, entry);
+    }
+    res.set('WWW-Authenticate', 'Basic realm="Landing Builder", charset="UTF-8"').status(401).type('text').send('Password required');
+  });
+}
+
+// Which pages may talk to this server. On your own computer: only the builder open at localhost (this also stops
+// DNS-rebinding tricks). Online: the password is the protection, and state-changing requests must come from this same site.
 const HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`, `[::1]:${PORT}`]);
 app.use((req, res, next) => {
-  if (process.env.RENDER === 'true') return next();
-  if (!HOSTS.has(String(req.headers.host || '').toLowerCase())) return res.status(403).json({ error: 'Unexpected host.' });
+  const host = String(req.headers.host || '').toLowerCase();
+  if (LOCAL_ONLY && !HOSTS.has(host)) return res.status(403).json({ error: 'Unexpected host.' });
   const origin = req.headers.origin;
   if (origin && !['GET', 'HEAD'].includes(req.method)) {
     let allowed = false;
     try {
-      allowed = HOSTS.has(new URL(origin).host.toLowerCase());
+      allowed = new URL(origin).host.toLowerCase() === host;
     } catch {
       /* not a valid origin */
     }
@@ -85,6 +123,7 @@ app.use((req, res, next) => {
   }
   next();
 });
+
 app.use(express.json({ limit: '100mb' }));
 
 // ---------- API ----------
@@ -243,7 +282,7 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: err.message || 'Something went wrong.' });
 });
 
-app.listen(PORT, () => {
-  console.log(`\n  Landing Builder running at  http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`\n  Landing Builder running at  ${LOCAL_ONLY ? `http://localhost:${PORT}` : `port ${PORT} (password protected)`}`);
   console.log(`  Pages are saved in          ${PAGES_DIR}\n`);
 });

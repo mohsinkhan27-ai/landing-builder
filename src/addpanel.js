@@ -1,5 +1,6 @@
 import { BLOCKS } from './blocks.js';
 import { CATEGORIES, ELEMENTS, STRIP_HTML, isSection } from './elements.js';
+import { isTextLike } from './freeform.js';
 
 const AUTO_WIDTH_IDS = new Set(['badge', 'f-submit']);
 const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
@@ -172,14 +173,87 @@ export function initAddPanel(editor, { container, getDesignCss }) {
     return strip.getEl()?.querySelector(':scope > .lp-stage');
   }
 
+  // ----- dropping into an ordinary (non-freeform) div: the element is inserted in the flow, where you point -----
+
+  const FLOW_BLOCKS = 'div, section, article, aside, header, footer, main, form, blockquote';
+  const HOLDS_CHILDREN = /^(DIV|SECTION|ARTICLE|ASIDE|HEADER|FOOTER|MAIN|LI|FORM|BLOCKQUOTE)$/;
+  const flowBlockOf = (el) => el?.closest?.(FLOW_BLOCKS) || null;
+
+  function flowContent(item) {
+    const content = contentOf(item);
+    if (typeof content === 'string') return content.replace(/\blp-free\b\s*/, '');
+    return { ...content, classes: (content.classes || []).filter((k) => k !== 'lp-free') };
+  }
+
+  function flowStyle(item) {
+    if (item.id === 'video' || item.id === 'map') return { width: '100%', height: 'auto', 'aspect-ratio': '16 / 9' };
+    if (item.id === 'image' || item.id === 'image-wide') return { width: '100%', height: 'auto' };
+    if (item.setH && item.h) return { width: `${item.w}px`, height: `${item.h}px`, 'max-width': '100%' };
+    return {};
+  }
+
+  // target: the component to insert into (or next to). pointer: frame coordinates, or null.
+  function flowInsert(item, target, pointer) {
+    const el = target.getEl();
+    const canHold = target.get('droppable') !== false && !isTextLike(target) && HOLDS_CHILDREN.test(el?.tagName || '');
+    let parent = target;
+    let index;
+    if (!canHold) {
+      parent = target.parent();
+      // Never put something inside a list or table: go up and place it after the whole list or table instead.
+      const LIST = /^(UL|OL|DL|TABLE|THEAD|TBODY|TFOOT|TR|SELECT)$/;
+      while (parent && LIST.test(parent.getEl()?.tagName || '')) {
+        target = parent;
+        parent = parent.parent();
+      }
+      if (!parent) return null;
+      index = parent.components().indexOf(target) + 1; // right after it
+    } else {
+      const kids = parent.components().models.filter((k) => k.getEl()?.getBoundingClientRect);
+      index = parent.components().length;
+      if (pointer && kids.length) {
+        let best = null;
+        kids.forEach((k, i) => {
+          const r = k.getEl().getBoundingClientRect();
+          const cx = r.left + r.width / 2;
+          const cy = r.top + r.height / 2;
+          const d = Math.hypot(pointer.x - cx, pointer.y - cy);
+          if (!best || d < best.d) best = { d, k, cx, cy, r };
+        });
+        // Neighbours side by side (columns, rows of cards) are compared left to right; stacked blocks top to bottom.
+        const parentWidth = el.getBoundingClientRect().width || 1;
+        const sideBySide = best.r.width < parentWidth * 0.7 && pointer.y >= best.r.top && pointer.y <= best.r.bottom;
+        const before = sideBySide ? pointer.x < best.cx : pointer.y < best.cy;
+        index = parent.components().indexOf(best.k) + (before ? 0 : 1);
+      }
+    }
+    const added = first(parent.components().add(flowContent(item), { at: index }));
+    if (!added) return null;
+    const style = flowStyle(item);
+    if (Object.keys(style).length) added.addStyle(style);
+    editor.select(added);
+    added.getEl()?.scrollIntoView?.({ block: 'nearest' });
+    return added;
+  }
+
   function placeElement(item, x, y) {
     // x, y are in canvas (iframe) coordinates, or null to use a sensible default spot
     const doc = frameEl().contentDocument;
     const hostOf = (el) => el?.closest?.('.lp-group') || el?.closest?.('.lp-strip')?.querySelector(':scope > .lp-stage') || null;
     let stageEl = null;
-    if (x != null) stageEl = hostOf(doc.elementFromPoint(x, y));
+    if (x != null) {
+      const hit = doc.elementFromPoint(x, y);
+      stageEl = hostOf(hit);
+      if (!stageEl) {
+        const block = modelOf(flowBlockOf(hit));
+        if (block && block !== wrapper()) return flowInsert(item, block, { x, y });
+      }
+    }
     if (!stageEl) {
-      stageEl = hostOf(editor.getSelected()?.getEl());
+      const selected = editor.getSelected();
+      stageEl = hostOf(selected?.getEl());
+      // With an ordinary element selected, "click to add" puts the new element inside it (or right after it).
+      if (!stageEl && x == null && selected && selected !== wrapper() && selected.getEl()) return flowInsert(item, selected, null);
       if (!stageEl && x == null) {
         const strips = wrapper().find('.lp-strip');
         stageEl = strips.length ? stageElOf(strips[strips.length - 1]) : null;
@@ -267,7 +341,8 @@ export function initAddPanel(editor, { container, getDesignCss }) {
       dropLine.style.top = `${r.top + y - 1}px`;
       dropLine.hidden = false;
     } else {
-      const strip = frameEl().contentDocument.elementFromPoint(fx, fy)?.closest('.lp-group, .lp-strip');
+      const under = frameEl().contentDocument.elementFromPoint(fx, fy);
+      const strip = under?.closest('.lp-group, .lp-strip') || under?.closest(FLOW_BLOCKS);
       if (strip) {
         strip.classList.add('lp-drop-target');
         highlighted = strip;

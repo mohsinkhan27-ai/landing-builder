@@ -53,6 +53,8 @@ Add > **Image & video** has Image, Wide image, Round image, YouTube video and Go
   Videos you uploaded earlier are listed so you can reuse them. A file path such as `C:\Users\you\Videos\clip.mp4` cannot work on a web page, so use Upload instead.
   Google Drive videos play through Drive's own player, and the file must be shared as "Anyone with the link".
   MP4 (H.264) or WebM plays everywhere. Autoplay, loop, controls and muted are tick boxes under the box.
+- **Put a video (or any element) inside an existing div or section:** drag it from the Add panel and hold it over that div. The div is outlined while you hover, and the element drops inside it at the spot you point to (top, between two elements, or bottom). It flows with the div's content, full width and 16:9 for video and maps, and stacks naturally on phones. Or select the div (or any element in it) and **click** the item in the Add panel: it goes inside the selected div at the end, or right after the selected element.
+  This works on ready-made sections, imported pages and AI-built pages. Inside a **Container** or a **strip** the element is instead free-floating, so you can place it anywhere. To move it later, drag it by the Layers panel, or use the arrow on its toolbar to select the parent.
 - **Map:** select it, then Design panel > Settings and type an address. Choose Roadmap or Satellite, and the zoom level.
 
 ## Animations
@@ -121,6 +123,25 @@ Details:
 - Requests go from this server straight to the provider you chose. Your prompt and your page's content are sent to that provider, and usage is billed to your account there.
 - The AI is told how this builder's design system works, so pages use the ready-made section styles. Scripts, event handlers and made-up image addresses in its answers are removed, and pictures become placeholders you replace by double-clicking them.
 - AI pages are made of stacked sections. Use the Strips and elements in the Add panel for freeform layouts.
+- **Pictures:** an AI model cannot supply real photos, so every picture arrives as a soft placeholder image, however the model wrote it (file names, web addresses and background images are all converted). Double-click a placeholder to upload your own. Hero backgrounds also arrive as placeholders you can replace.
+
+## Putting it online (Render and similar)
+
+This builder is a private tool: it can edit and delete your pages and it can spend your AI key. **Never put it on the internet without a password.**
+If `HOST` is set to a public address and `BUILDER_PASSWORD` is empty, it refuses to start. With a password set, the browser asks for it before showing anything
+(any user name works), and ten wrong guesses lock that visitor out for ten minutes.
+
+Settings (environment variables):
+- `HOST=0.0.0.0` so the hosting service can reach it (the default, `127.0.0.1`, is "this computer only").
+- `BUILDER_PASSWORD` a long password of your own. Set it in the hosting dashboard, never in the repository.
+- `PORT` is normally set by the host. `PAGES_DIR` and `DATA_DIR` choose where pages and settings (the AI key) are stored.
+
+On Render: create a **Web Service** from your GitHub repository (or use the included `render.yaml`), with
+build command `npm install && npm run build`, start command `node server.js --prod`, health check path `/healthz`, and the variables above.
+
+**Your pages are files on the server's disk.** On Render's free plan the disk is erased whenever the service restarts or is updated, so pages and the saved AI key disappear.
+To keep them, use a paid plan with a persistent disk mounted at `/var/data` and set `PAGES_DIR=/var/data/pages` and `DATA_DIR=/var/data/settings` (`render.yaml` does this).
+Either way, use **File > Download all pages** regularly as a backup. Download your finished pages and host those separately, so visitors never see the builder.
 
 ## Make it look the way you want
 

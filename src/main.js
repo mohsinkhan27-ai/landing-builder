@@ -787,7 +787,7 @@ function aiContext() {
 
 async function applyAi(mode, { html, css, hint, allowedUrls }) {
   const cleanHtml = prepareAiHtml(html, allowedUrls);
-  const cleanCss = sanitizeCss(css);
+  const cleanCss = sanitizeCss(css, allowedUrls);
   if (!cleanHtml.trim()) throw new Error('The AI did not return any page content. Try asking again.');
   const fill = () => {
     editor.select();

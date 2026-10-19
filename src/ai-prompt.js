@@ -47,7 +47,7 @@ export function systemPrompt() {
 # The page body
 - Return body content only: a sequence of top-level <header>, <section> and <footer> elements. Never output <html>, <head>, <body>, <script>, <style>, <link>, or <iframe>.
 - Use ONLY the classes below. They are responsive and already styled, so do not set fixed pixel widths on containers and avoid inline style (small tweaks such as max-width are fine).
-- Every image must be written as <img class="lp-img" src="placeholder:WIDTHxHEIGHT" alt="a useful description"> (for example placeholder:1200x900). The person will replace the pictures. Never use external image addresses, and never invent file names.
+- Every image must be written exactly as <img class="lp-img" src="placeholder:WIDTHxHEIGHT" alt="a useful description"> with a lowercase x and two whole numbers, for example src="placeholder:1200x900". The person replaces the pictures later. Right: src="placeholder:1200x900". Wrong (these show as broken pictures): src="images/hero.jpg", src="hero.jpg", src="https://images.unsplash.com/...", src="placeholder:hero", src="placeholder:1200×900". Never write file names or web addresses for images, never use <picture> or srcset, and never use CSS background-image with a file or address (for a hero background use a solid or lp-hero-dark style and an <img> next to the text instead).
 - Write specific, benefit-led copy for the business described. No lorem ipsum, no "Brandname" or "Your headline here". Invent a fitting brand name if none is given. Keep sentences short.
 - A typical landing page has 6 to 9 sections: navigation, hero with one clear primary call to action, social proof, features or benefits, how it works or pricing, FAQ, a closing call to action, footer. Fit the page to what was asked.
 - Navigation links use anchors (#features, #pricing, #faq, #signup) and the matching sections carry those ids.
@@ -119,42 +119,62 @@ const placeholder = (w, h) => {
 
 const SAFE_FRAME = /^https:\/\/(?:www\.)?(?:youtube(?:-nocookie)?\.com\/embed|player\.vimeo\.com\/video|maps\.google\.com|www\.google\.com\/maps\/embed)/i;
 
-export function sanitizeCss(css) {
-  return String(css || '')
-    .replace(/@import[^;]*;?/gi, '')
-    .replace(/expression\s*\(|javascript:|behavior\s*:|-moz-binding/gi, '')
-    .replace(/url\(\s*(['"]?)https?:[^)]*\)/gi, 'none')
-    .slice(0, 60000);
+// Something that will really load: an embedded picture, a file uploaded to this builder, or an address the person gave.
+const loads = (src, allowed) => /^data:image\//i.test(src) || /^\/pages\/[\w-]+\/assets\//.test(src) || allowed.includes(src);
+
+// Pull a size out of "placeholder:1200x800" in any of the ways a model might write it, or null.
+const sizeIn = (text) => {
+  const m = /placeholder\s*[:/]?\s*(\d{2,4})\s*[x×X*]\s*(\d{2,4})/i.exec(text);
+  return m ? [m[1], m[2]] : null;
+};
+
+const URL_IN_CSS = /url\(\s*(['"]?)(.*?)\1\s*\)/gi;
+
+// Backgrounds: anything that would not load becomes a placeholder picture, so a hero never ends up empty.
+const fixBackgrounds = (css, allowed) =>
+  css.replace(URL_IN_CSS, (match, quote, address) => {
+    const src = address.trim();
+    if (loads(src, allowed)) return match;
+    const [w, h] = sizeIn(src) || [1600, 900];
+    return `url("${placeholder(w, h)}")`;
+  });
+
+export function sanitizeCss(css, allowedUrls = []) {
+  return fixBackgrounds(
+    String(css || '')
+      .replace(/@import[^;]*;?/gi, '')
+      .replace(/expression\s*\(|javascript:|behavior\s*:|-moz-binding/gi, ''),
+    allowedUrls,
+  ).slice(0, 80000);
 }
 
 export function prepareAiHtml(html, allowedUrls = []) {
   const doc = new DOMParser().parseFromString(`<body>${String(html)}</body>`, 'text/html');
   doc.body.querySelectorAll('script, style, link, meta, base, object, embed, title, noscript').forEach((n) => n.remove());
+  doc.body.querySelectorAll('picture source').forEach((n) => n.remove()); // the plain <img> inside is kept
+  doc.body.querySelectorAll('svg image').forEach((n) => n.remove());
   doc.body.querySelectorAll('iframe').forEach((f) => {
     if (!SAFE_FRAME.test(f.getAttribute('src') || '')) f.remove();
   });
   for (const el of doc.body.querySelectorAll('*')) {
     for (const attr of [...el.attributes]) {
-      if (/^on/i.test(attr.name) || /^srcset$/i.test(attr.name)) el.removeAttribute(attr.name);
+      if (/^on/i.test(attr.name) || /^(?:srcset|data-src|data-srcset|data-bg|data-background|loading|fetchpriority)$/i.test(attr.name)) el.removeAttribute(attr.name);
       else if (/^(?:href|src|action|formaction|xlink:href)$/i.test(attr.name) && /^\s*(?:javascript|vbscript|data:text\/html)/i.test(attr.value)) el.setAttribute(attr.name, '#');
     }
     if (el.hasAttribute('style')) {
-      el.setAttribute(
-        'style',
-        el.getAttribute('style')
-          .replace(/url\(\s*(['"]?)placeholder:(\d+)x(\d+)\1\s*\)/gi, (m, q, w, h) => `url("${placeholder(w, h)}")`)
-          .replace(/url\(\s*(['"]?)https?:[^)]*\)/gi, 'none')
-          .replace(/expression\s*\(|javascript:/gi, ''),
-      );
+      el.setAttribute('style', fixBackgrounds(el.getAttribute('style').replace(/expression\s*\(|javascript:/gi, ''), allowedUrls));
     }
+    if (el.tagName === 'VIDEO' && el.hasAttribute('poster') && !loads(el.getAttribute('poster'), allowedUrls)) el.removeAttribute('poster');
   }
   for (const img of doc.body.querySelectorAll('img')) {
     const src = (img.getAttribute('src') || '').trim();
-    const m = /^placeholder:(\d+)x(\d+)/i.exec(src);
-    if (m) img.setAttribute('src', placeholder(m[1], m[2]));
-    else if (!src || (/^(?:https?:)?\/\//i.test(src) && !allowedUrls.includes(src))) {
-      // An address the AI made up would be a broken picture. Use a placeholder the person can replace.
-      img.setAttribute('src', placeholder(img.getAttribute('width') || 1200, img.getAttribute('height') || 800));
+    if (!loads(src, allowedUrls)) {
+      // Whatever the model wrote (a made-up file name, a web address, "placeholder:hero", a missing size...),
+      // it would show as a broken picture. Use a placeholder the person can replace.
+      const hint = `${img.className} ${img.getAttribute('alt') || ''}`;
+      const small = /avatar|profile|team|person|logo|icon|portrait|headshot/i.test(hint);
+      const [w, h] = sizeIn(src) || [img.getAttribute('width') || (small ? 400 : 1200), img.getAttribute('height') || (small ? 400 : 800)];
+      img.setAttribute('src', placeholder(w, h));
     }
     if (!img.hasAttribute('alt')) img.setAttribute('alt', '');
     if (!img.classList.length) img.classList.add('lp-img');
