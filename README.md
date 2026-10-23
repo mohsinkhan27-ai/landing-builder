@@ -137,6 +137,8 @@ Click **Analyze** in the left rail to extract the design system of any external 
 3. Review the extracted tokens and save as a named profile (e.g. `stripe-style`). Saved profiles are persisted in `data/design-profiles.json`.
 4. When a profile is active, an indicator badge appears in the **AI designer** panel. Whenever you ask the AI to generate or modify a page, the full analyzed design profile is automatically attached to the AI prompt so the resulting page inherits that site's branding, colors, fonts and button styles.
 
+The analyzer needs a headless browser for layout and responsive detection. Locally it uses an installed Chrome or Edge; on Render, the blueprint installs Chromium during the build.
+
 
 ## Putting it online (Render and similar)
 

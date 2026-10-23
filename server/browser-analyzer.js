@@ -2,19 +2,23 @@ import { chromium } from 'playwright-core';
 import { assertPublicUrl, isBlockedRequestUrl } from './url-guard.js';
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-const CHANNELS = process.env.ANALYZER_BROWSER_CHANNEL ? [process.env.ANALYZER_BROWSER_CHANNEL] : ['chrome', 'msedge'];
+const CHANNELS = process.env.ANALYZER_BROWSER_CHANNEL
+  ? [process.env.ANALYZER_BROWSER_CHANNEL]
+  : [null, 'chrome', 'msedge'];
 const VIEWPORTS = [['tablet', 834, 1112], ['mobile', 390, 844]];
 
 async function launchBrowser() {
   let lastError;
   for (const channel of CHANNELS) {
     try {
-      return await chromium.launch({ channel, headless: true, args: ['--disable-dev-shm-usage'] });
+      const options = { headless: true, args: ['--disable-dev-shm-usage'] };
+      if (channel) options.channel = channel;
+      return await chromium.launch(options);
     } catch (err) {
       lastError = err;
     }
   }
-  throw lastError || new Error('No local Chrome or Edge browser was found.');
+  throw lastError || new Error('No Chromium, Chrome, or Edge browser was found.');
 }
 
 const collect = () => {
@@ -666,7 +670,7 @@ function buildProfile(url, finalUrl, title, data, responsive) {
     radius: ghostGroup.sample.radius,
   } : null;
   const buttonVariants = allButtonVariants.slice(0, 4);
-  if (primaryButton && !buttonVariants.includes(primaryButton)) {
+  if (primaryButton.sample && !buttonVariants.includes(primaryButton)) {
     if (buttonVariants.length >= 4) buttonVariants[3] = primaryButton;
     else buttonVariants.push(primaryButton);
   }
