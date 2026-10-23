@@ -1,6 +1,7 @@
 // What the AI is told, how its answer is read, and how it is cleaned before it reaches your page.
 
 import { BLOCKS, PATHS, ph } from './blocks.js';
+import { profileToPrompt } from './analyzer.js';
 
 // ---------- turning the page into something compact to send ----------
 
@@ -27,22 +28,23 @@ export function compactForAi(html) {
 
 const SECTION_IDS = ['nav-simple', 'announcement-bar', 'hero-split', 'hero-center', 'hero-dark', 'hero-signup', 'logo-strip', 'stats', 'features-3', 'feature-row', 'feature-row-reverse', 'steps-3', 'testimonials-3', 'pricing-3', 'faq', 'cta-banner', 'newsletter', 'contact', 'footer-columns'];
 
-let cached = '';
-export function systemPrompt() {
-  if (cached) return cached;
-  const patterns = SECTION_IDS.map((id) => {
-    const block = BLOCKS.find((b) => b.id === id);
-    return block ? `<!-- ${block.label} -->\n${compactForAi(block.content)}` : '';
-  }).filter(Boolean).join('\n\n');
-  const icons = Object.entries(PATHS).map(([name, d]) => `${name}: ${d}`).join('\n');
+let basePromptCache = '';
+export function systemPrompt(profile = null) {
+  if (!basePromptCache) {
+    const patterns = SECTION_IDS.map((id) => {
+      const block = BLOCKS.find((b) => b.id === id);
+      return block ? `<!-- ${block.label} -->\n${compactForAi(block.content)}` : '';
+    }).filter(Boolean).join('\n\n');
+    const icons = Object.entries(PATHS).map(([name, d]) => `${name}: ${d}`).join('\n');
 
-  cached = `You are a senior web designer and copywriter. You build landing pages inside a visual page builder. The person describes a page (or asks for changes) and you answer with the page's HTML, which the builder turns into editable elements.
+    basePromptCache = `You are a senior web designer and copywriter. You build landing pages inside a visual page builder. The person describes a page (or asks for changes) and you answer with the page's HTML, which the builder turns into editable elements.
 
 # Output format (follow exactly)
 1. One or two short sentences saying what you built or changed. No headings, no lists.
 2. Then ONE fenced code block marked html that contains the COMPLETE page body.
 3. Only if you truly need extra CSS: then ONE fenced block marked css. Prefer the classes listed below and avoid custom CSS.
 4. Nothing after the code blocks.
+5. Do not use tool calls, function-call syntax, or special markers such as <|tool_call_start|>. Plain text only, with the two fenced code blocks described above.
 
 # The page body
 - Return body content only: a sequence of top-level <header>, <section> and <footer> elements. Never output <html>, <head>, <body>, <script>, <style>, <link>, or <iframe>.
@@ -66,7 +68,7 @@ Social proof: lp-logos, lp-logo, lp-logos-title, lp-stats, lp-stat (a <strong> n
 Features: lp-feature, lp-steps, lp-step, lp-step-num.
 Pricing: lp-plan, lp-plan-featured, lp-price, lp-table-wrap, lp-table, lp-yes, lp-no.
 Other: lp-cta (a rounded call-to-action band inside a section), lp-team-card, lp-gallery (with lp-wide), lp-form, lp-field, lp-input, lp-inline-form, lp-contact-info, lp-footer, lp-footer-grid, lp-footer-bottom, lp-footer-simple, lp-faq-list, lp-faq.
-Colors come from the system, so do not hard-code colors.
+By default, colors come from the design system — but when a REFERENCE DESIGN SYSTEM section appears below, you MUST use those exact colors instead (see that section for details).
 
 # Icons
 Icons are inline SVG inside the lp-icon tile: <span class="lp-icon"><svg viewBox="0 0 24 24" aria-hidden="true">PATH</svg></span>. Available paths (use these only):
@@ -80,10 +82,82 @@ Add data-enter="fade", "slide-up", "zoom", "from-left", "from-right" or "reveal-
 
 # Changing an existing page
 When the person asks for changes, the message ends with the CURRENT PAGE (its html, and css if any). Return the complete updated page. Keep everything they did not ask to change exactly as it is, including ids, classes, inline style attributes and data-* attributes. Elements with class lp-free inside lp-strip and lp-stage are positioned freely with absolute coordinates: keep their style attributes. Images that already have real addresses (starting with /pages/) stay as they are.`;
-  return cached;
+  }
+
+  if (!profile) return basePromptCache;
+  // Profile goes FIRST so the model reads the mandatory overrides before the base rules,
+  // and the short reminder at the end keeps later base instructions from overriding it.
+  const base = basePromptCache.replace(
+    '3. Only if you truly need extra CSS: then ONE fenced block marked css. Prefer the classes listed below and avoid custom CSS.',
+    '3. Then ONE fenced block marked css containing the required token overrides from the reference design system.',
+  );
+  return `${profileToPrompt(profile)}\n\n${base}\n\n# FINAL REMINDER — REFERENCE DESIGN SYSTEM IS ACTIVE
+The REFERENCE DESIGN SYSTEM at the top of this prompt overrides the default palette and fonts.
+- You MUST return ONE css block after the html block. Put the required token overrides in it.
+- Keep the lp-* classes, but let the reference colors, fonts and button shapes override them.
+- Do not ignore the reference and do not fall back to the default blue/cream palette.`;
 }
 
 // ---------- reading the answer ----------
+
+const decodeEscapes = (value) => String(value).replace(/\\(?:u([0-9a-f]{4})|x([0-9a-f]{2})|([nrtbfv0'"\\/]))/gi, (m, u, x, c) => {
+  if (u) return String.fromCharCode(parseInt(u, 16));
+  if (x) return String.fromCharCode(parseInt(x, 16));
+  const map = { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v', '0': '\0', "'": "'", '"': '"', '\\': '\\', '/': '/' };
+  return map[c] ?? c;
+});
+
+// Some gateways route to a model that answers with a tool call instead of fenced code, e.g.
+// <|tool_call_start|>[html(body='...', css='...')]<|tool_call_end|>. Read that shape too so the
+// page still lands in the builder and the raw markup never shows up in the chat.
+function readToolCall(text) {
+  const marker = /<\|tool_call_start\|>/i.exec(text);
+  if (!marker && !/\[\s*html\s*\(/i.test(text)) return null;
+  const from = marker ? marker.index : 0;
+  const endMatch = /<\|tool_call_end\|>/i.exec(text.slice(from));
+  const to = endMatch ? from + endMatch.index + endMatch[0].length : text.length;
+  const slice = text.slice(from, to);
+  // Match the whole call first. This tolerates unescaped apostrophes in the body ("you're"):
+  // the body ends at the quote before ", css=", not at the first quote in the text.
+  const pair = /body\s*=\s*'([\s\S]*?)'\s*,\s*css\s*=\s*'([\s\S]*)'\s*\)\s*\]?/i.exec(slice)
+    || /body\s*=\s*"([\s\S]*?)"\s*,\s*css\s*=\s*"([\s\S]*)"\s*\)\s*\]?/i.exec(slice);
+  const body = pair || /body\s*=\s*'([\s\S]*)'\s*\)\s*\]?/i.exec(slice) || /body\s*=\s*"([\s\S]*)"\s*\)\s*\]?/i.exec(slice);
+  if (!body) return null;
+  const css = pair ? null : /css\s*=\s*'([\s\S]*)'\s*\)\s*\]?/i.exec(slice) || /css\s*=\s*"([\s\S]*)"\s*\)\s*\]?/i.exec(slice);
+  const html = decodeEscapes(body[1]).trim();
+  if (!html) return null;
+  return {
+    html,
+    css: decodeEscapes(pair ? pair[2] : (css ? css[1] : '')).trim(),
+    complete: !!endMatch || /\)\s*\]?\s*$/.test(slice.trim()),
+    explanation: (text.slice(0, from) + text.slice(to)).trim(),
+  };
+}
+
+function readJsonToolCall(text) {
+  const match = /\{\s*"body"\s*:\s*"((?:\\.|[^"\\])*)"[\s\S]*?"css"\s*:\s*"((?:\\.|[^"\\])*)"/.exec(text);
+  if (!match) return null;
+  try {
+    const html = JSON.parse(`"${match[1]}"`).trim();
+    if (!html) return null;
+    return { html, css: JSON.parse(`"${match[2]}"`).trim(), complete: true, explanation: text.slice(0, match.index).trim() };
+  } catch {
+    return null;
+  }
+}
+
+function readRawHtml(text) {
+  const start = text.search(/<!doctype\s+html|<html[\s>]|<body[\s>]|<(?:header|main|section|div|footer)[\s>]/i);
+  if (start < 0) return null;
+  const html = text.slice(start).replace(/```[a-z]*[ \t]*\r?\n?/gi, '').trim();
+  if (!/class=["'][^"']*\blp-/i.test(html) && !/^<(?:!doctype|html|body)\b/i.test(html)) return null;
+  return {
+    html,
+    css: '',
+    complete: /<\/(?:html|body|main|section|div|footer)>/i.test(html),
+    explanation: text.slice(0, start).trim(),
+  };
+}
 
 export function extractPage(text) {
   const read = (lang) => {
@@ -95,6 +169,41 @@ export function extractPage(text) {
   };
   const html = read('html');
   const css = read('css');
+  if (!html) {
+    const tool = readToolCall(text) || readJsonToolCall(text);
+    if (tool) {
+      return {
+        html: tool.html,
+        htmlComplete: tool.complete,
+        hasHtml: true,
+        css: tool.css,
+        explanation: tool.explanation || (tool.complete ? 'Page generated.' : ''),
+      };
+    }
+    // The tool call is still streaming: keep the raw markup out of the chat and show the
+    // normal "Designing..." state until the body attribute and the end marker arrive.
+    const marker = /<\|tool_call_start\|>|\[\s*html\s*\(/i.exec(text);
+    if (marker) {
+      const partial = /body\s*=\s*'([\s\S]*)/i.exec(text.slice(marker.index)) || /body\s*=\s*"([\s\S]*)/i.exec(text.slice(marker.index));
+      return {
+        html: partial ? decodeEscapes(partial[1]).trim() : '',
+        htmlComplete: false,
+        hasHtml: true,
+        css: '',
+        explanation: text.slice(0, marker.index).trim(),
+      };
+    }
+    const raw = readRawHtml(text);
+    if (raw) {
+      return {
+        html: raw.html,
+        htmlComplete: raw.complete,
+        hasHtml: true,
+        css: raw.css,
+        explanation: raw.explanation || 'Page generated.',
+      };
+    }
+  }
   let explanation = text;
   for (const block of [html, css].filter(Boolean).sort((a, b) => b.start - a.start)) explanation = explanation.slice(0, block.start) + explanation.slice(block.end);
   return {
@@ -106,7 +215,10 @@ export function extractPage(text) {
   };
 }
 
-export const omitCode = (text) => text.replace(/```(?:html|css)[^\n]*\n[\s\S]*?(?:```|$)/gi, '[page code omitted: the current page is sent with each request]');
+// Older replies keep only their short explanation: their code blocks are stale anyway, and the
+// builder appends the live current page to every request. Do not insert a marker sentence here:
+// the model tends to echo it back into its answers, which then look like an error in the chat.
+export const omitCode = (text) => extractPage(text).explanation || 'Page generated.';
 
 // ---------- cleaning what the AI wrote ----------
 
@@ -143,7 +255,8 @@ export function sanitizeCss(css, allowedUrls = []) {
   return fixBackgrounds(
     String(css || '')
       .replace(/@import[^;]*;?/gi, '')
-      .replace(/expression\s*\(|javascript:|behavior\s*:|-moz-binding/gi, ''),
+      .replace(/expression\s*\(|javascript:|behavior\s*:|-moz-binding/gi, '')
+      .replace(/(^|[},\n])[ \t]*(lp-[a-z0-9-]+)(?=[ \t]*[{,:])/gi, '$1 .$2'),
     allowedUrls,
   ).slice(0, 80000);
 }

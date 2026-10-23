@@ -12,6 +12,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { mountExport } from './server/export.js';
 import { mountAi } from './server/ai.js';
+import { mountAnalyzer } from './server/analyzer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PAGES_DIR = path.resolve(process.env.PAGES_DIR || path.join(__dirname, 'pages'));
@@ -247,6 +248,7 @@ app.post('/api/pages/:name/assets', upload.array('files', 300), (req, res) => {
 
 mountExport(app, { PAGES_DIR, pageDir, wrap, HttpError });
 mountAi(app, { DATA_DIR, wrap, HttpError });
+mountAnalyzer(app, { DATA_DIR, wrap, HttpError });
 
 // ---------- Saved pages (preview + assets) ----------
 

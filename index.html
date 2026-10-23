@@ -50,6 +50,9 @@
         <button type="button" class="rail-btn" data-pane="ai" aria-pressed="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg><span>AI</span>
         </button>
+        <button type="button" class="rail-btn" data-pane="analyzer" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg><span>Analyze</span>
+        </button>
         <button type="button" class="rail-btn" data-pane="pages" aria-pressed="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg><span>Pages</span>
         </button>
@@ -66,6 +69,7 @@
           <button type="button" class="fly-close" id="fly-close" aria-label="Close panel">&times;</button>
           <section id="pane-add" class="pane" hidden></section>
           <section id="pane-ai" class="pane" hidden></section>
+          <section id="pane-analyzer" class="pane" hidden></section>
           <section id="pane-pages" class="pane" hidden>
             <div class="pane-head"><h2>Your pages</h2><button type="button" class="tb-btn primary" id="btn-new">+ New page</button></div>
             <ul id="pages-list" class="pages-list"></ul>
@@ -128,6 +132,7 @@
     </dialog>
 
     <dialog id="ai-dialog"></dialog>
+    <dialog id="analyzer-dialog"></dialog>
 
     <dialog id="import-dialog">
       <form method="dialog" id="import-form">

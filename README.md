@@ -125,6 +125,19 @@ Details:
 - AI pages are made of stacked sections. Use the Strips and elements in the Add panel for freeform layouts.
 - **Pictures:** an AI model cannot supply real photos, so every picture arrives as a soft placeholder image, however the model wrote it (file names, web addresses and background images are all converted). Double-click a placeholder to upload your own. Hero backgrounds also arrive as placeholders you can replace.
 
+## Site Analyzer
+
+Click **Analyze** in the left rail to extract the design system of any external website:
+1. Click **+ Analyze a site** and paste any URL (e.g. `https://stripe.com`, `https://linear.app`).
+2. The analyzer scans the page's HTML, external stylesheets and inline styles to extract:
+   - **Color scheme:** primary, secondary, accent, surface, backgrounds, text colors and full palette.
+   - **Typography:** primary heading and body fonts.
+   - **Buttons:** border radius, style (pill, rounded, square), padding, weight, text transform.
+   - **Spacing & general look:** section paddings, container widths, border radii, box shadows, line heights.
+3. Review the extracted tokens and save as a named profile (e.g. `stripe-style`). Saved profiles are persisted in `data/design-profiles.json`.
+4. When a profile is active, an indicator badge appears in the **AI designer** panel. Whenever you ask the AI to generate or modify a page, the full analyzed design profile is automatically attached to the AI prompt so the resulting page inherits that site's branding, colors, fonts and button styles.
+
+
 ## Putting it online (Render and similar)
 
 This builder is a private tool: it can edit and delete your pages and it can spend your AI key. **Never put it on the internet without a password.**

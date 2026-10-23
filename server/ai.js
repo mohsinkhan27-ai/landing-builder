@@ -145,23 +145,45 @@ export function mountAi(app, { DATA_DIR, wrap, HttpError }) {
   const adapters = {
     // OpenAI and anything compatible with it
     async listOpenAI(cfg, signal) {
-      const res = await call(`${cfg.baseUrl}/models`, { headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {} }, cfg.apiKey, signal);
-      const body = await res.json();
+      const headers = cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {};
+      let baseUrl = cfg.baseUrl;
+      let raw = await (await call(`${baseUrl}/models`, { headers }, cfg.apiKey, signal)).text();
+      // Local routers often show a web UI at / and expose the API at /v1.
+      if (raw.trimStart().startsWith('<') && new URL(baseUrl).pathname === '/') {
+        baseUrl = `${baseUrl}/v1`;
+        raw = await (await call(`${baseUrl}/models`, { headers }, cfg.apiKey, signal)).text();
+      }
+      let body;
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        if (raw.trimStart().startsWith('<')) {
+          throw new ProviderError(`That address returned a web page, not an OpenAI-compatible API. Enter its API base URL, which usually ends in /v1 (for example ${cfg.baseUrl}/v1).`);
+        }
+        throw new ProviderError('The service returned something that is not valid JSON. Check the service address.');
+      }
       let ids = (body.data || body.models || []).map((m) => (typeof m === 'string' ? m : m.id || m.name)).filter(Boolean);
       if (cfg.id === 'openai') ids = ids.filter((id) => !/embedding|whisper|tts|dall-e|moderation|davinci|babbage|image|audio|realtime|transcribe|search|computer-use/i.test(id));
       return ids.sort();
     },
     async *streamOpenAI(cfg, { system, messages }, signal) {
-      const res = await call(
-        `${cfg.baseUrl}/chat/completions`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}) },
-          body: JSON.stringify({ model: cfg.model, stream: true, messages: [{ role: 'system', content: system }, ...mergeTurns(messages)] }),
-        },
-        cfg.apiKey,
-        signal,
-      );
+      const init = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}) },
+        body: JSON.stringify({
+          model: cfg.model,
+          max_tokens: MAX_OUTPUT_TOKENS,
+          stream: true,
+          messages: [{ role: 'system', content: system }, ...mergeTurns(messages)],
+        }),
+      };
+      let res = await call(`${cfg.baseUrl}/chat/completions`, init, cfg.apiKey, signal);
+      if ((res.headers.get('content-type') || '').includes('text/html') && new URL(cfg.baseUrl).pathname === '/') {
+        res = await call(`${cfg.baseUrl}/v1/chat/completions`, init, cfg.apiKey, signal);
+      }
+      if ((res.headers.get('content-type') || '').includes('text/html')) {
+        throw new ProviderError(`That address returned a web page, not an OpenAI-compatible API. Enter its API base URL, which usually ends in /v1 (for example ${cfg.baseUrl}/v1).`);
+      }
       for await (const { data } of sseEvents(res)) {
         if (data === '[DONE]') return;
         let json;

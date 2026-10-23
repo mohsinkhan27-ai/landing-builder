@@ -29,7 +29,7 @@ function h(tag, props = {}, ...kids) {
   return el;
 }
 
-export function initAi({ pane, dialog, getContext, applyToPage }) {
+export function initAi({ pane, dialog, getContext, applyToPage, getProfile }) {
   let settings = { active: null, providers: {} };
   let messages = []; // { role, text, error, applied }
   let abort = null;
@@ -49,7 +49,9 @@ export function initAi({ pane, dialog, getContext, applyToPage }) {
     } catch {
       /* the panel shows "not connected" */
     }
-    renderHeader();
+    // Re-render the welcome screen too: it is built from the settings and would otherwise
+    // still say "Connect your AI" after the settings arrive.
+    renderMessages();
     renderComposer();
   };
 
@@ -74,10 +76,12 @@ export function initAi({ pane, dialog, getContext, applyToPage }) {
       ? h('select', { 'aria-label': 'AI provider', onchange: async (e) => { settings = await put({ provider: e.target.value }); renderHeader(); renderComposer(); } },
           configured.map(([id, p]) => h('option', { value: id, text: p.label, selected: id === settings.active })))
       : null;
+    const prof = getProfile?.();
     header.replaceChildren(
       h('div', { class: 'ai-title' },
         h('b', { text: 'AI designer' }),
-        h('span', { class: `ai-status${ready ? ' on' : ''}`, text: ready ? `${a.label.split(' (')[0]} · ${a.model}` : 'Not connected' })),
+        h('span', { class: `ai-status${ready ? ' on' : ''}`, text: ready ? `${a.label.split(' (')[0]} · ${a.model}` : 'Not connected' }),
+        prof ? h('span', { class: 'ai-profile-badge', title: `Styling guided by: ${prof.name} (${prof.url})`, text: `🎨 ${prof.name}` }) : null),
       h('div', { class: 'ai-actions' },
         switcher,
         h('button', { type: 'button', class: 'ai-link', text: ready ? 'Settings' : 'Connect', onclick: openConnect }),
@@ -137,8 +141,11 @@ export function initAi({ pane, dialog, getContext, applyToPage }) {
       node.append(h('div', { class: 'ai-error' }, h('p', { text: msg.error }), h('button', { type: 'button', class: 'ai-link', text: 'Check connection', onclick: openConnect })));
     }
     if (page.hasHtml) {
-      if (!msg.done || !page.htmlComplete) {
+      if (!msg.done) {
         node.append(h('div', { class: 'ai-building' }, h('i'), h('span', { text: `Designing the page… ${page.html.length.toLocaleString()} characters` })));
+      } else if (!page.htmlComplete) {
+        node.append(h('div', { class: 'ai-error' },
+          h('p', { text: 'The AI answer was cut off before the page was complete, so it cannot be applied. Try again; if it keeps happening, pick a model with a larger output limit.' })));
       } else {
         const card = h('div', { class: 'ai-card' }, h('b', { text: 'Page ready' }));
         const apply = async (mode) => {
@@ -205,10 +212,12 @@ export function initAi({ pane, dialog, getContext, applyToPage }) {
     };
     try {
       const a = active();
+      const prof = getProfile?.();
+      const sys = systemPrompt(prof);
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: a.id, model: a.model, system: systemPrompt(), messages: [...history, { role: 'user', content }] }),
+        body: JSON.stringify({ provider: a.id, model: a.model, system: sys, messages: [...history, { role: 'user', content }] }),
         signal: abort.signal,
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Request failed (${res.status})`);
@@ -342,5 +351,5 @@ export function initAi({ pane, dialog, getContext, applyToPage }) {
   renderMessages();
   renderComposer();
   loadSettings();
-  return { refresh: loadSettings, open: openConnect };
+  return { refresh: loadSettings, open: openConnect, updateProfile: () => { renderHeader(); renderComposer(); } };
 }

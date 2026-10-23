@@ -19,6 +19,7 @@ import { initFaqEditor } from './faqeditor.js';
 import { initAnimate } from './animate.js';
 import { initMedia } from './media.js';
 import { initAi } from './ai.js';
+import { initAnalyzer } from './analyzer.js';
 import { compactForAi, prepareAiHtml, sanitizeCss } from './ai-prompt.js';
 import { describe, itemsFromDrop, prepareImport, runImport } from './importer.js';
 import * as api from './api.js';
@@ -825,7 +826,20 @@ async function applyAi(mode, { html, css, hint, allowedUrls }) {
   };
 }
 
-const ai = initAi({ pane: $('pane-ai'), dialog: $('ai-dialog'), getContext: aiContext, applyToPage: applyAi });
+let analyzer = null;
+const ai = initAi({
+  pane: $('pane-ai'),
+  dialog: $('ai-dialog'),
+  getContext: aiContext,
+  applyToPage: applyAi,
+  getProfile: () => analyzer?.getActiveProfile() || null,
+});
+
+analyzer = initAnalyzer({
+  pane: $('pane-analyzer'),
+  dialog: $('analyzer-dialog'),
+  onProfileChange: () => ai.updateProfile?.(),
+});
 
 // ---------- toolbar, rail, panels ----------
 
@@ -864,15 +878,15 @@ function showPane(name) {
   pane = pane === name ? null : name;
   const flyout = $('flyout');
   flyout.hidden = !pane;
-  flyout.className = pane === 'add' ? 'wide' : pane === 'ai' ? 'chat' : 'narrow';
-  for (const id of ['add', 'ai', 'pages', 'layers']) $(`pane-${id}`).hidden = pane !== id;
+  flyout.className = (pane === 'add' || pane === 'analyzer') ? 'wide' : pane === 'ai' ? 'chat' : 'narrow';
+  for (const id of ['add', 'ai', 'analyzer', 'pages', 'layers']) $(`pane-${id}`).hidden = pane !== id;
   document.querySelectorAll('.rail-btn').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.pane === pane)));
 }
 document.querySelectorAll('.rail-btn').forEach((b) => b.addEventListener('click', () => showPane(b.dataset.pane)));
-// Clicking on the page gets the Add and Pages panels out of the way (Layers stays, it is used alongside the page).
+// Clicking on the page gets the Add, Pages and Analyzer panels out of the way (Layers stays, it is used alongside the page).
 editor.on('load', () => {
   editor.Canvas.getFrameEl().contentDocument.addEventListener('mousedown', () => {
-    if (pane === 'add' || pane === 'pages') showPane(pane);
+    if (pane === 'add' || pane === 'pages' || pane === 'analyzer') showPane(pane);
   });
 });
 $('fly-close').addEventListener('click', () => showPane(pane));

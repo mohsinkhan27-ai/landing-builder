@@ -3,6 +3,7 @@
 export const FONT_FAMILIES = [
   ['Bricolage Grotesque', "'Bricolage Grotesque', sans-serif"],
   ['Figtree', "'Figtree', sans-serif"],
+  ['Inter', "'Inter', sans-serif"],
   ['Poppins', "'Poppins', sans-serif"],
   ['Montserrat', "'Montserrat', sans-serif"],
   ['DM Sans', "'DM Sans', sans-serif"],
@@ -26,6 +27,7 @@ export const FONTS_URL =
   [
     'family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700',
     'family=Figtree:wght@400;500;600;700',
+    'family=Inter:wght@400;500;600;700',
     'family=Poppins:wght@400;500;600;700',
     'family=Montserrat:wght@400;500;600;700',
     'family=DM+Sans:wght@400;500;700',
