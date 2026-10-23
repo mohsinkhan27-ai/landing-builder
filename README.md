@@ -155,7 +155,7 @@ On Render: use the included `render.yaml` (Docker runtime), which builds from th
 If you create the service manually, choose **Docker** as the runtime and set health check path `/healthz` and the variables above.
 
 **Your pages are files on the server's disk.** On Render's free plan the disk is erased whenever the service restarts or is updated, so pages and the saved AI key disappear.
-To keep them, use a paid plan with a persistent disk mounted at `/var/data` and set `PAGES_DIR=/var/data/pages` and `DATA_DIR=/var/data/settings` (`render.yaml` does this).
+To keep them, use a paid plan with a persistent disk mounted at `/var/data` and set `PAGES_DIR=/var/data/pages` and `DATA_DIR=/var/data/settings`. The included `render.yaml` targets the free plan (no disk).
 Either way, use **File > Download all pages** regularly as a backup. Download your finished pages and host those separately, so visitors never see the builder.
 
 ## Make it look the way you want

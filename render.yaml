@@ -6,18 +6,10 @@ services:
     name: landing-builder
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: free
     healthCheckPath: /healthz
     envVars:
       - key: HOST
         value: 0.0.0.0
       - key: BUILDER_PASSWORD
         sync: false        # you type this in the Render dashboard; never put it in the repository
-      - key: PAGES_DIR
-        value: /var/data/pages
-      - key: DATA_DIR
-        value: /var/data/settings
-    disk:
-      name: builder-data
-      mountPath: /var/data
-      sizeGB: 1
