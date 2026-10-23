@@ -4,18 +4,13 @@
 services:
   - type: web
     name: landing-builder
-    runtime: node
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: starter
-    buildCommand: npm install && npx playwright-core install --with-deps chromium && npm run build
-    startCommand: node server.js --prod
     healthCheckPath: /healthz
     envVars:
-      - key: NODE_VERSION
-        value: 22
       - key: HOST
         value: 0.0.0.0
-      - key: PLAYWRIGHT_BROWSERS_PATH
-        value: "0"
       - key: BUILDER_PASSWORD
         sync: false        # you type this in the Render dashboard; never put it in the repository
       - key: PAGES_DIR

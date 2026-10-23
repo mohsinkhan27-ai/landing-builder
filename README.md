@@ -137,7 +137,7 @@ Click **Analyze** in the left rail to extract the design system of any external 
 3. Review the extracted tokens and save as a named profile (e.g. `stripe-style`). Saved profiles are persisted in `data/design-profiles.json`.
 4. When a profile is active, an indicator badge appears in the **AI designer** panel. Whenever you ask the AI to generate or modify a page, the full analyzed design profile is automatically attached to the AI prompt so the resulting page inherits that site's branding, colors, fonts and button styles.
 
-The analyzer needs a headless browser for layout and responsive detection. Locally it uses an installed Chrome or Edge; on Render, the blueprint installs Chromium during the build.
+The analyzer needs a headless browser for layout and responsive detection. Locally it uses an installed Chrome or Edge; on Render, the Docker image installs Chromium and its system dependencies during the build.
 
 
 ## Putting it online (Render and similar)
@@ -151,8 +151,8 @@ Settings (environment variables):
 - `BUILDER_PASSWORD` a long password of your own. Set it in the hosting dashboard, never in the repository.
 - `PORT` is normally set by the host. `PAGES_DIR` and `DATA_DIR` choose where pages and settings (the AI key) are stored.
 
-On Render: create a **Web Service** from your GitHub repository (or use the included `render.yaml`), with
-build command `npm install && npm run build`, start command `node server.js --prod`, health check path `/healthz`, and the variables above.
+On Render: use the included `render.yaml` (Docker runtime), which builds from the included `Dockerfile` and installs Chromium for the site analyzer.
+If you create the service manually, choose **Docker** as the runtime and set health check path `/healthz` and the variables above.
 
 **Your pages are files on the server's disk.** On Render's free plan the disk is erased whenever the service restarts or is updated, so pages and the saved AI key disappear.
 To keep them, use a paid plan with a persistent disk mounted at `/var/data` and set `PAGES_DIR=/var/data/pages` and `DATA_DIR=/var/data/settings` (`render.yaml` does this).
