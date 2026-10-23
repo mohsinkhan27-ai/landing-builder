@@ -11,7 +11,9 @@ async function launchBrowser() {
   let lastError;
   for (const channel of CHANNELS) {
     try {
-      const options = { headless: true, args: ['--disable-dev-shm-usage'] };
+      const args = ['--disable-dev-shm-usage'];
+      if (process.platform === 'linux') args.push('--no-sandbox');
+      const options = { headless: true, args };
       if (channel) options.channel = channel;
       return await chromium.launch(options);
     } catch (err) {
