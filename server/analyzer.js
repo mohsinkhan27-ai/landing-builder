@@ -568,10 +568,108 @@ export function mountAnalyzer(app, { DATA_DIR, wrap, HttpError }) {
     }
   }));
 
+  const escFilename = (s) => String(s || '').replace(/[^a-z0-9_-]/gi, '_');
+
+  // Export all saved design profiles as JSON file download.
+  app.get('/api/design-profiles/export', wrap(async (req, res) => {
+    const profiles = await loadProfiles();
+    res.set('Content-Type', 'application/json; charset=utf-8');
+    res.set('Content-Disposition', 'attachment; filename="design-profiles.json"');
+    res.send(JSON.stringify(profiles, null, 2));
+  }));
+
+  // Import design profile(s) from JSON.
+  app.post('/api/design-profiles/import', wrap(async (req, res) => {
+    const body = req.body;
+    if (!body || typeof body !== 'object') throw new HttpError(400, 'Invalid import payload.');
+
+    let incomingList = [];
+    const overwrite = Boolean(body.overwrite);
+
+    if (Array.isArray(body)) {
+      incomingList = body;
+    } else if (Array.isArray(body.profiles)) {
+      incomingList = body.profiles;
+    } else if (body.profile && typeof body.profile === 'object') {
+      incomingList = [body.profile];
+    } else if (body.colors) {
+      incomingList = [body];
+    } else {
+      throw new HttpError(400, 'No valid profiles found in payload. Expected a profile object or an array of profiles.');
+    }
+
+    if (!incomingList.length) throw new HttpError(400, 'No profiles to import.');
+
+    const profiles = await loadProfiles();
+    const imported = [];
+
+    for (let i = 0; i < incomingList.length; i++) {
+      const item = incomingList[i];
+      if (!item || typeof item !== 'object' || !item.colors) {
+        throw new HttpError(400, `Profile #${i + 1} is missing color design tokens.`);
+      }
+
+      // Determine profile name
+      let baseName = String(item.name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
+      if (!baseName && item.url) {
+        try {
+          baseName = new URL(item.url).hostname.replace(/^www\./, '').replace(/\.[^.]+$/, '').replace(/[^a-z0-9]+/g, '-').slice(0, 40);
+        } catch { /* ignore */ }
+      }
+      if (!NAME_RE.test(baseName)) {
+        baseName = `imported-profile-${Date.now().toString(36)}`;
+      }
+
+      let finalName = baseName;
+      const existingIdx = profiles.findIndex((p) => p.name === finalName);
+
+      let status = 'added';
+      if (existingIdx >= 0) {
+        if (overwrite) {
+          status = 'overwritten';
+        } else {
+          let counter = 2;
+          while (profiles.some((p) => p.name === `${baseName}-${counter}`)) {
+            counter++;
+          }
+          finalName = `${baseName}-${counter}`;
+          status = 'renamed';
+        }
+      }
+
+      const entry = {
+        ...item,
+        name: finalName,
+        savedAt: item.savedAt || new Date().toISOString(),
+      };
+
+      if (status === 'overwritten') {
+        profiles[existingIdx] = entry;
+      } else {
+        profiles.push(entry);
+      }
+
+      imported.push({ name: finalName, originalName: item.name || '', url: item.url || '', status });
+    }
+
+    await saveProfiles(profiles);
+    res.json({ ok: true, count: imported.length, imported });
+  }));
+
   // List all saved design profiles.
   app.get('/api/design-profiles', wrap(async (req, res) => {
     const profiles = await loadProfiles();
     res.json({ profiles: profiles.map((p) => ({ name: p.name, url: p.url, savedAt: p.savedAt })) });
+  }));
+
+  // Export a single profile as JSON file download.
+  app.get('/api/design-profiles/:name/export', wrap(async (req, res) => {
+    const profiles = await loadProfiles();
+    const profile = profiles.find((p) => p.name === req.params.name);
+    if (!profile) throw new HttpError(404, 'Profile not found.');
+    res.set('Content-Type', 'application/json; charset=utf-8');
+    res.set('Content-Disposition', `attachment; filename="${escFilename(profile.name)}.design-profile.json"`);
+    res.send(JSON.stringify(profile, null, 2));
   }));
 
   // Get one profile.

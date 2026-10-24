@@ -700,6 +700,136 @@ dialog button.danger:hover { background: #fde7e4; }
 }
 .sa-item-del:hover { color: #b3271c; background: #fdeceb; }
 
+.sa-head-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sa-active-btn {
+  padding: 4px 8px;
+  background: transparent;
+  border: 0;
+  color: var(--ui-muted);
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+.sa-active-btn:hover {
+  color: var(--ui-accent);
+  background: var(--ui-soft);
+}
+
+.sa-profiles-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sa-link-btn {
+  background: transparent;
+  border: 0;
+  color: var(--ui-accent);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.sa-link-btn:hover {
+  background: var(--ui-accent-soft);
+}
+
+.sa-item-btn {
+  padding: 8px 10px;
+  background: transparent;
+  border: 0;
+  color: var(--ui-muted);
+  cursor: pointer;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+.sa-item-btn:hover {
+  color: var(--ui-accent);
+  background: var(--ui-soft);
+}
+
+.sa-drop-zone {
+  margin: 10px 0;
+  padding: 16px;
+  cursor: default;
+}
+
+.sa-import-opts {
+  margin-top: 10px;
+}
+
+.sa-checkbox-label {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  margin: 0 !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  cursor: pointer;
+  color: var(--ui-text);
+}
+
+.sa-import-summary {
+  font-size: 12.5px;
+  margin-bottom: 8px;
+  color: var(--ui-text);
+}
+
+.sa-import-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  background: #fff;
+  border: 1px solid var(--ui-line);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+.sa-import-item:last-child {
+  margin-bottom: 0;
+}
+
+.sa-import-item-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sa-import-item-info b {
+  font-size: 13px;
+}
+
+.sa-import-conflict {
+  font-size: 11px;
+  color: #b3271c;
+  background: #fdeceb;
+  padding: 1px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.sa-import-swatches {
+  display: flex;
+  gap: 4px;
+}
+
 /* Analyzer Dialog */
 #analyzer-dialog {
   width: min(540px, calc(100vw - 32px));

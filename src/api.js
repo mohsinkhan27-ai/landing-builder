@@ -29,6 +29,12 @@ export const duplicatePage = (name, to) => request(`/api/pages/${enc(name)}/dupl
 export const deletePage = (name) => request(`/api/pages/${enc(name)}`, { method: 'DELETE' });
 export const listAssets = (name, kind = 'image') => request(`/api/pages/${enc(name)}/assets?kind=${kind}`).then((d) => d.data);
 
+export const listDesignProfiles = () => request('/api/design-profiles').then((d) => d.profiles);
+export const getDesignProfile = (name) => request(`/api/design-profiles/${enc(name)}`).then((d) => d.profile);
+export const saveDesignProfile = (name, profile) => request(`/api/design-profiles/${enc(name)}`, json('PUT', profile));
+export const deleteDesignProfile = (name) => request(`/api/design-profiles/${enc(name)}`, { method: 'DELETE' });
+export const importDesignProfiles = (payload) => request('/api/design-profiles/import', json('POST', payload));
+
 // Uploads files into a page's assets folder. Uses XMLHttpRequest so large videos can report progress (0 to 1).
 export function uploadAssets(name, files, onProgress) {
   const form = new FormData();

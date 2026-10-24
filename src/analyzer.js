@@ -89,13 +89,49 @@ export function initAnalyzer({ pane, dialog, onProfileChange }) {
     }
   }
 
+  function downloadJson(url, filename) {
+    const a = document.createElement('a');
+    a.href = url;
+    if (filename) a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  function exportProfile(name) {
+    if (!name) return;
+    downloadJson(`/api/design-profiles/${encodeURIComponent(name)}/export`, `${name}.design-profile.json`);
+  }
+
+  function exportAllProfiles() {
+    if (!profiles.length) {
+      alert('No profiles to export.');
+      return;
+    }
+    downloadJson('/api/design-profiles/export', 'design-profiles.json');
+  }
+
   // ---------- panel rendering ----------
 
   function render() {
     pane.replaceChildren(
       h('div', { class: 'pane-head' },
         h('h2', { text: 'Site Analyzer' }),
-        h('button', { type: 'button', class: 'tb-btn primary', text: '+ Analyze a site', onclick: openAnalyzeDialog }),
+        h('div', { class: 'sa-head-buttons' },
+          h('button', {
+            type: 'button',
+            class: 'tb-btn',
+            title: 'Import design profile(s) from JSON',
+            html: '<i class="fa fa-upload" style="margin-right:5px"></i>Import',
+            onclick: openImportDialog,
+          }),
+          h('button', {
+            type: 'button',
+            class: 'tb-btn primary',
+            text: '+ Analyze a site',
+            onclick: openAnalyzeDialog,
+          }),
+        ),
       ),
       renderActiveProfile(),
       renderProfilesList(),
@@ -112,7 +148,20 @@ export function initAnalyzer({ pane, dialog, onProfileChange }) {
       h('div', { class: 'sa-active-head' },
         h('b', { text: activeProfile.name }),
         h('span', { class: 'sa-url', text: activeProfile.url }),
-        h('button', { type: 'button', class: 'sa-remove', text: '✕', title: 'Deactivate this profile', onclick: () => selectProfile('') }),
+        h('button', {
+          type: 'button',
+          class: 'sa-active-btn',
+          title: `Export ${activeProfile.name} as JSON`,
+          html: '<i class="fa fa-download"></i>',
+          onclick: () => exportProfile(activeProfile.name),
+        }),
+        h('button', {
+          type: 'button',
+          class: 'sa-remove',
+          text: '✕',
+          title: 'Deactivate this profile',
+          onclick: () => selectProfile(''),
+        }),
       ),
       renderProfilePreview(activeProfile),
     );
@@ -228,9 +277,22 @@ export function initAnalyzer({ pane, dialog, onProfileChange }) {
   }
 
   function renderProfilesList() {
-    if (!profiles.length) return h('div');
+    if (!profiles.length) {
+      return h('div', { class: 'sa-empty' },
+        h('p', { text: 'No saved profiles yet. Analyze a site or import a JSON profile to get started.' }),
+      );
+    }
     return h('div', { class: 'sa-profiles' },
-      h('label', { text: 'Saved profiles' }),
+      h('div', { class: 'sa-profiles-header' },
+        h('label', { text: `Saved profiles (${profiles.length})` }),
+        h('button', {
+          type: 'button',
+          class: 'sa-link-btn',
+          title: 'Export all saved profiles as JSON',
+          html: '<i class="fa fa-download" style="margin-right:4px"></i>Export all',
+          onclick: exportAllProfiles,
+        }),
+      ),
       h('ul', { class: 'sa-list' },
         ...profiles.map((p) =>
           h('li', { class: `sa-item${p.name === activeProfileName ? ' on' : ''}` },
@@ -238,7 +300,26 @@ export function initAnalyzer({ pane, dialog, onProfileChange }) {
               h('b', { text: p.name }),
               h('span', { class: 'sa-url', text: p.url }),
             ),
-            h('button', { type: 'button', class: 'sa-item-del', title: 'Delete', text: '✕', onclick: () => deleteProfile(p.name) }),
+            h('button', {
+              type: 'button',
+              class: 'sa-item-btn',
+              title: `Export ${p.name} as JSON`,
+              html: '<i class="fa fa-download"></i>',
+              onclick: (e) => {
+                e.stopPropagation();
+                exportProfile(p.name);
+              },
+            }),
+            h('button', {
+              type: 'button',
+              class: 'sa-item-del',
+              title: 'Delete',
+              text: '✕',
+              onclick: (e) => {
+                e.stopPropagation();
+                deleteProfile(p.name);
+              },
+            }),
           ),
         ),
       ),
@@ -333,6 +414,194 @@ export function initAnalyzer({ pane, dialog, onProfileChange }) {
     urlInput.focus();
   }
 
+  // ---------- import dialog ----------
+
+  function openImportDialog() {
+    dialog.replaceChildren();
+    let parsedProfiles = [];
+
+    const fileInput = h('input', {
+      type: 'file',
+      accept: '.json,application/json',
+      style: 'display:none',
+    });
+
+    const status = h('p', { class: 'sa-dialog-status', role: 'status' });
+    const previewBox = h('div', { class: 'sa-dialog-preview' });
+    const overwriteCheckbox = h('input', { type: 'checkbox', id: 'sa-import-overwrite' });
+    const importBtn = h('button', { type: 'submit', class: 'primary', text: 'Import profile(s)', disabled: true });
+    const pasteArea = h('textarea', {
+      id: 'sa-import-paste',
+      rows: 4,
+      placeholder: 'Or paste JSON here (e.g. {"name": "stripe-style", "colors": {...}} or [{...}])',
+      autocomplete: 'off',
+      autocorrect: 'off',
+      spellcheck: false,
+    });
+
+    const say = (text, bad) => {
+      status.textContent = text;
+      status.className = `sa-dialog-status ${bad ? 'bad' : ''}`;
+    };
+
+    function parseAndInspect(text) {
+      if (!text || !text.trim()) {
+        parsedProfiles = [];
+        previewBox.replaceChildren();
+        importBtn.disabled = true;
+        say('');
+        return;
+      }
+      try {
+        const raw = JSON.parse(text);
+        let list = [];
+        if (Array.isArray(raw)) list = raw;
+        else if (Array.isArray(raw.profiles)) list = raw.profiles;
+        else if (raw.profile && typeof raw.profile === 'object') list = [raw.profile];
+        else if (raw.colors) list = [raw];
+        else throw new Error('Unrecognized format. Expected a profile object with colors or an array of profiles.');
+
+        if (!list.length) throw new Error('No profiles found in the provided JSON.');
+
+        for (let i = 0; i < list.length; i++) {
+          const item = list[i];
+          if (!item || typeof item !== 'object' || !item.colors) {
+            throw new Error(`Profile #${i + 1} does not have valid color design tokens.`);
+          }
+        }
+
+        parsedProfiles = list;
+        importBtn.disabled = false;
+        importBtn.textContent = `Import ${list.length} profile${list.length === 1 ? '' : 's'}`;
+
+        const existingNames = new Set(profiles.map((p) => p.name));
+        const items = list.map((item, idx) => {
+          const name = item.name || `profile-${idx + 1}`;
+          const isConflict = existingNames.has(name);
+          const c = item.colors || {};
+          const palette = Array.isArray(c.palette) && c.palette.length ? c.palette : [c.primary, c.secondary, c.accent];
+          return h('div', { class: 'sa-import-item' },
+            h('div', { class: 'sa-import-item-info' },
+              h('b', { text: name }),
+              item.url ? h('span', { class: 'sa-url', text: item.url }) : null,
+              isConflict ? h('span', { class: 'sa-import-conflict', text: '(already exists)' }) : null,
+            ),
+            h('div', { class: 'sa-import-swatches' },
+              ...palette.filter(Boolean).slice(0, 6).map((hex) =>
+                h('div', { class: 'sa-swatch-sm', style: `background:${hex}`, title: hex }),
+              ),
+            ),
+          );
+        });
+
+        previewBox.replaceChildren(
+          h('div', { class: 'sa-import-summary' },
+            h('b', { text: `Found ${list.length} profile${list.length === 1 ? '' : 's'}:` }),
+          ),
+          ...items,
+        );
+
+        say(`Ready to import ${list.length} profile${list.length === 1 ? '' : 's'}.`);
+      } catch (err) {
+        parsedProfiles = [];
+        previewBox.replaceChildren();
+        importBtn.disabled = true;
+        say(err.message, true);
+      }
+    }
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        parseAndInspect(reader.result);
+      };
+      reader.onerror = () => say('Failed to read file.', true);
+      reader.readAsText(file);
+    });
+
+    pasteArea.addEventListener('input', () => {
+      parseAndInspect(pasteArea.value);
+    });
+
+    const dropZone = h('div', {
+      class: 'drop sa-drop-zone',
+      ondragover: (e) => { e.preventDefault(); dropZone.classList.add('over'); },
+      ondragleave: () => dropZone.classList.remove('over'),
+      ondrop: (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('over');
+        const file = e.dataTransfer.files?.[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = () => parseAndInspect(reader.result);
+          reader.readAsText(file);
+        }
+      },
+    },
+      h('div', { text: 'Drag and drop a .json file here, or' }),
+      h('div', { class: 'drop-actions' },
+        h('button', {
+          type: 'button',
+          class: 'tb-btn',
+          text: 'Choose JSON file',
+          onclick: () => fileInput.click(),
+        }),
+      ),
+    );
+
+    const formEl = h('form', {
+      method: 'dialog',
+      onsubmit: async (e) => {
+        e.preventDefault();
+        if (!parsedProfiles.length) return;
+        importBtn.disabled = true;
+        say('Importing profiles...');
+        try {
+          const res = await json('/api/design-profiles/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              profiles: parsedProfiles,
+              overwrite: overwriteCheckbox.checked,
+            }),
+          });
+          await loadProfiles();
+          if (res.imported?.length === 1) {
+            await selectProfile(res.imported[0].name);
+          }
+          dialog.close();
+        } catch (err) {
+          say(err.message, true);
+          importBtn.disabled = false;
+        }
+      },
+    },
+      h('h2', { text: 'Import design profiles' }),
+      h('p', { class: 'hint', text: 'Import design profiles from an exported JSON file or paste profile JSON.' }),
+      fileInput,
+      dropZone,
+      h('label', { for: 'sa-import-paste', text: 'Or paste JSON' }),
+      pasteArea,
+      previewBox,
+      h('div', { class: 'sa-import-opts' },
+        h('label', { class: 'sa-checkbox-label' },
+          overwriteCheckbox,
+          h('span', { text: ' Overwrite existing profiles if names match (otherwise saves as a new copy)' }),
+        ),
+      ),
+      status,
+      h('div', { class: 'dialog-actions' },
+        h('button', { type: 'button', text: 'Cancel', onclick: () => dialog.close() }),
+        importBtn,
+      ),
+    );
+
+    dialog.append(formEl);
+    dialog.showModal();
+  }
+
   // ---------- public API ----------
 
   render();
@@ -342,6 +611,9 @@ export function initAnalyzer({ pane, dialog, onProfileChange }) {
     getActiveProfile: () => activeProfile,
     refresh: loadProfiles,
     open: openAnalyzeDialog,
+    openImport: openImportDialog,
+    exportProfile,
+    exportAll: exportAllProfiles,
   };
 }
 
