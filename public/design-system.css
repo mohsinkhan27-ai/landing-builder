@@ -208,6 +208,79 @@ a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visibl
 .lp-logo { font-family: var(--lp-font-head); font-size: 1.4rem; font-weight: 700; letter-spacing: -0.02em; color: var(--lp-muted); }
 .lp-logos-title { text-align: center; color: var(--lp-muted); font-weight: 500; margin-bottom: 28px; }
 
+/* Logo marquee (infinite scroll) */
+.lp-marquee-wrap {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  padding: 16px 0;
+  mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
+}
+.lp-marquee {
+  display: flex;
+  width: max-content;
+  animation: lp-marquee-scroll 24s linear infinite;
+  will-change: transform;
+}
+.lp-marquee:hover {
+  animation-play-state: paused;
+}
+.lp-marquee-track {
+  display: flex;
+  align-items: center;
+  gap: 56px;
+  padding-right: 56px;
+  flex-shrink: 0;
+}
+.lp-marquee-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--lp-font-head);
+  font-weight: 700;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  color: var(--lp-muted);
+  opacity: 0.8;
+  white-space: nowrap;
+  transition: opacity 0.2s, color 0.2s, transform 0.2s;
+  cursor: default;
+}
+.lp-marquee-item:hover {
+  opacity: 1;
+  color: var(--lp-ink);
+  transform: translateY(-1px);
+}
+.lp-marquee-item svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+.lp-marquee-item img {
+  height: 32px;
+  width: auto;
+  max-width: 130px;
+  object-fit: contain;
+  filter: grayscale(100%);
+  opacity: 0.75;
+  transition: filter 0.2s, opacity 0.2s;
+}
+.lp-marquee-item:hover img {
+  filter: grayscale(0%);
+  opacity: 1;
+}
+
+@keyframes lp-marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
 .lp-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px 24px; text-align: center; }
 .lp-stat strong { display: block; font-family: var(--lp-font-head); font-size: clamp(2.2rem, 4.4vw, 3.4rem); line-height: 1.1; color: var(--lp-ink); letter-spacing: -0.03em; }
 .lp-stat span { color: var(--lp-muted); }

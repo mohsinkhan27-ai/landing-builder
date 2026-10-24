@@ -9,7 +9,13 @@ const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
 const round = (n, digits = 2) => Math.round(n * 10 ** digits) / 10 ** digits;
 
 function toHex(color) {
-  const m = /rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)/.exec(color || '');
+  if (!color) return '#000000';
+  const c = String(color).trim();
+  if (/^#[0-9a-f]{6}$/i.test(c)) return c.toLowerCase();
+  if (/^#[0-9a-f]{3}$/i.test(c)) {
+    return `#${c[1]}${c[1]}${c[2]}${c[2]}${c[3]}${c[3]}`.toLowerCase();
+  }
+  const m = /rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)/.exec(c);
   if (!m) return '#000000';
   return `#${[m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')}`;
 }
@@ -89,6 +95,21 @@ export function initTextPopup(editor, { openDock, onManageFaq }) {
       </div>
 
       <div class="tp-foot">
+        <button type="button" class="tp-wide tp-ai-toggle" data-act="ai-rewrite" title="Improve, shorten, or rewrite this text using AI">&#10024; Magic Rewrite</button>
+        <div class="tp-ai-box" hidden>
+          <div class="tp-ai-chips">
+            <button type="button" class="tp-ai-chip" data-rewrite="Make it a punchy, high-converting headline">⚡ Headline</button>
+            <button type="button" class="tp-ai-chip" data-rewrite="Shorten this text and make it concise and punchy">✂️ Shorten</button>
+            <button type="button" class="tp-ai-chip" data-rewrite="Make this persuasive, benefit-driven and compelling">🎯 Persuasive</button>
+            <button type="button" class="tp-ai-chip" data-rewrite="Make the tone polished, trustworthy and professional">💼 Professional</button>
+            <button type="button" class="tp-ai-chip" data-rewrite="Fix grammar, spelling and refine phrasing">🛠️ Fix</button>
+          </div>
+          <div class="tp-ai-row">
+            <input type="text" class="tp-ai-input" placeholder="Custom prompt (e.g. make it playful)..." aria-label="Custom rewrite prompt">
+            <button type="button" class="tp-ai-go" title="Run rewrite">&rarr;</button>
+          </div>
+          <div class="tp-ai-status"></div>
+        </div>
         <button type="button" class="tp-wide" data-act="faq" hidden>${ICONS.faq} Edit questions and answers</button>
         <div class="tp-row">
           <button type="button" class="tp-wide" data-act="animate">&#9889; Animate</button>
@@ -109,6 +130,9 @@ export function initTextPopup(editor, { openDock, onManageFaq }) {
   const yIn = $('#tp-y');
   const wIn = $('#tp-w');
   const hint = $('.tp-hint');
+  const aiBox = $('.tp-ai-box');
+  const aiInput = $('.tp-ai-input');
+  const aiStatus = $('.tp-ai-status');
 
   fontSel.replaceChildren(
     ...FONT_FAMILIES.map(([label, value]) => {
@@ -292,6 +316,7 @@ export function initTextPopup(editor, { openDock, onManageFaq }) {
       if (comp !== selected) {
         moved = false;
         lastRange = null;
+        aiBox.hidden = true;
       }
       comp = selected;
       root.hidden = false;
@@ -346,6 +371,28 @@ export function initTextPopup(editor, { openDock, onManageFaq }) {
   const apply = (props) => {
     if (!comp) return;
     comp.addStyle(props);
+    const children = comp.components();
+    if (children.length === 1 && typeof children.at(0)?.addStyle === 'function') {
+      children.at(0).addStyle(props);
+    }
+    const el = comp.getEl();
+    if (el) {
+      const applyToDom = (node) => {
+        if (!node || !node.style) return;
+        if (props.color !== undefined) node.style.color = props.color;
+        if (props['font-family'] !== undefined) node.style.fontFamily = props['font-family'];
+        if (props['font-size'] !== undefined) node.style.fontSize = props['font-size'];
+        if (props['font-weight'] !== undefined) node.style.fontWeight = props['font-weight'];
+        if (props['font-style'] !== undefined) node.style.fontStyle = props['font-style'];
+        if (props['text-decoration'] !== undefined) node.style.textDecoration = props['text-decoration'];
+        if (props['text-align'] !== undefined) node.style.textAlign = props['text-align'];
+        if (props['line-height'] !== undefined) node.style.lineHeight = props['line-height'];
+        if (props['letter-spacing'] !== undefined) node.style.letterSpacing = props['letter-spacing'];
+        if (props['text-transform'] !== undefined) node.style.textTransform = props['text-transform'];
+      };
+      applyToDom(el);
+      if (el.firstElementChild) applyToDom(el.firstElementChild);
+    }
     refresh();
     reposition();
   };
@@ -394,9 +441,130 @@ export function initTextPopup(editor, { openDock, onManageFaq }) {
     apply({ 'z-index': String(next) });
   }
 
+  async function performRewrite(instruction) {
+    if (!comp) return;
+    const rng = selectionRange()?.cloneRange();
+    const isSelection = rng && !rng.collapsed;
+    const targetText = isSelection ? rng.toString().trim() : (comp.getEl()?.innerText || '').trim();
+    if (!targetText) {
+      say('Select or click some text first.');
+      return;
+    }
+
+    // Capture the existing styles before rewriting
+    const targetEl = isSelection
+      ? (rng.commonAncestorContainer.nodeType === 3 ? rng.commonAncestorContainer.parentElement : rng.commonAncestorContainer)
+      : comp.getEl();
+    const cs = targetEl ? win().getComputedStyle(targetEl) : null;
+    const compStyle = comp.getStyle() || {};
+
+    const preserved = {
+      color: compStyle.color || targetEl?.style.color || (cs?.color && cs.color !== 'rgba(0, 0, 0, 0)' ? cs.color : ''),
+      fontSize: compStyle['font-size'] || targetEl?.style.fontSize || cs?.fontSize || '',
+      fontFamily: compStyle['font-family'] || targetEl?.style.fontFamily || cs?.fontFamily || '',
+      fontWeight: compStyle['font-weight'] || targetEl?.style.fontWeight || cs?.fontWeight || '',
+      lineHeight: compStyle['line-height'] || targetEl?.style.lineHeight || (cs?.lineHeight !== 'normal' ? cs?.lineHeight : ''),
+      letterSpacing: compStyle['letter-spacing'] || targetEl?.style.letterSpacing || (cs?.letterSpacing !== 'normal' ? cs?.letterSpacing : ''),
+      textAlign: compStyle['text-align'] || targetEl?.style.textAlign || cs?.textAlign || '',
+      textTransform: compStyle['text-transform'] || targetEl?.style.textTransform || (cs?.textTransform !== 'none' ? cs?.textTransform : ''),
+    };
+
+    aiStatus.textContent = 'Rewriting with AI…';
+    aiStatus.className = 'tp-ai-status';
+    try {
+      const res = await fetch('/api/ai/rewrite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: targetText, instruction }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Rewrite failed (${res.status})`);
+      const rewritten = data.result;
+      if (!rewritten) throw new Error('AI returned empty response.');
+
+      if (isSelection) {
+        heldRange = rng;
+        restore(rng);
+        if (preserved.color || preserved.fontFamily || preserved.fontSize) {
+          const span = doc().createElement('span');
+          span.textContent = rewritten;
+          if (preserved.color) span.style.color = preserved.color;
+          if (preserved.fontFamily) span.style.fontFamily = preserved.fontFamily;
+          if (preserved.fontSize) span.style.fontSize = preserved.fontSize;
+          if (preserved.fontWeight) span.style.fontWeight = preserved.fontWeight;
+          doc().execCommand('insertHTML', false, span.outerHTML);
+        } else {
+          exec('insertText', rewritten);
+        }
+        // Commit DOM HTML into GrapesJS component model so changes are saved and persist
+        const el = comp.getEl();
+        if (el) {
+          comp.components(el.innerHTML);
+        }
+      } else {
+        // Set rewritten text directly into comp.components() so GrapesJS model and editor.getHtml() update immediately
+        comp.components(rewritten);
+        if (comp.getEl()) comp.getEl().textContent = rewritten;
+
+        // Re-apply preserved styles so color, size, and font type are guaranteed to remain identical
+        const stylesToKeep = {};
+        if (preserved.color) stylesToKeep.color = preserved.color;
+        if (preserved.fontSize) stylesToKeep['font-size'] = preserved.fontSize;
+        if (preserved.fontFamily) stylesToKeep['font-family'] = preserved.fontFamily;
+        if (preserved.fontWeight) stylesToKeep['font-weight'] = preserved.fontWeight;
+        if (preserved.lineHeight) stylesToKeep['line-height'] = preserved.lineHeight;
+        if (preserved.letterSpacing) stylesToKeep['letter-spacing'] = preserved.letterSpacing;
+        if (preserved.textAlign) stylesToKeep['text-align'] = preserved.textAlign;
+        if (preserved.textTransform) stylesToKeep['text-transform'] = preserved.textTransform;
+
+        comp.addStyle(stylesToKeep);
+
+        const el = comp.getEl();
+        if (el) {
+          if (preserved.color) el.style.color = preserved.color;
+          if (preserved.fontSize) el.style.fontSize = preserved.fontSize;
+          if (preserved.fontFamily) el.style.fontFamily = preserved.fontFamily;
+          if (preserved.fontWeight) el.style.fontWeight = preserved.fontWeight;
+        }
+      }
+
+      comp.getView()?.syncContent?.();
+      comp.getView()?.disableEditing?.();
+
+      refresh();
+      editor.trigger('change:canvasOffset');
+      editor.trigger('update');
+      say('Rewritten with AI ✨');
+      aiStatus.textContent = '';
+      aiBox.hidden = true;
+      position();
+    } catch (err) {
+      aiStatus.textContent = err.message;
+      aiStatus.className = 'tp-ai-status bad';
+    }
+  }
+
+  aiInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const val = aiInput.value.trim();
+      if (val) performRewrite(val);
+    }
+  });
+
   root.addEventListener('click', (event) => {
     const target = event.target.closest('button');
     if (!target || !comp) return;
+
+    if (target.dataset.rewrite) {
+      performRewrite(target.dataset.rewrite);
+      return;
+    }
+    if (target.classList.contains('tp-ai-go')) {
+      const val = aiInput.value.trim();
+      if (val) performRewrite(val);
+      return;
+    }
 
     if (target.dataset.cmd) {
       const cmd = target.dataset.cmd;
@@ -406,7 +574,7 @@ export function initTextPopup(editor, { openDock, onManageFaq }) {
         return;
       }
       const cs = style();
-      if (cmd === 'bold') apply({ 'font-weight': parseInt(cs.fontWeight, 10) >= 600 ? '400' : '700' });
+      if (cmd === 'bold') apply({ 'font-weight': (parseInt(cs.fontWeight, 10) >= 600 || cs.fontWeight === 'bold') ? '400' : '700' });
       if (cmd === 'italic') apply({ 'font-style': cs.fontStyle === 'italic' ? 'normal' : 'italic' });
       if (cmd === 'underline' || cmd === 'strikeThrough') {
         const line = cmd === 'underline' ? 'underline' : 'line-through';
@@ -422,6 +590,11 @@ export function initTextPopup(editor, { openDock, onManageFaq }) {
     switch (target.dataset.act) {
       case 'close':
         editor.select();
+        break;
+      case 'ai-rewrite':
+        aiBox.hidden = !aiBox.hidden;
+        if (!aiBox.hidden) aiInput.focus();
+        position();
         break;
       case 'size-dec':
       case 'size-inc': {

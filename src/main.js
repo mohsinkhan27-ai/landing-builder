@@ -176,7 +176,7 @@ function buildDocument(name) {
   body = closeFaqItems(body);
   if (!/^<body[\s>]/i.test(body)) body = `<body>${body}</body>`;
   const js = (editor.getJs() || '').trim();
-  const usesMotion = /\sdata-(enter|fx|scroll|loop)=/.test(body);
+  const usesMotion = /\sdata-(enter|fx|scroll|loop|sticky)\b/.test(body);
   const scripts = [];
   if (usesMotion && motionJs) scripts.push(`<script>${motionJs}</script>`, '<script>LPMotion.init(document);</script>');
   if (js) scripts.push(`<script>${js}</script>`);
@@ -221,7 +221,8 @@ async function doSave(force) {
   setStatus('Saving…');
   try {
     const html = buildDocument(name);
-    const css = `${designSystemCss}\n\n/* Page styles */\n${editor.getCss()}`;
+    const themeBlock = meta.themeCss ? `\n\n/* Applied Design Theme */\n${meta.themeCss}\n` : '';
+    const css = `${designSystemCss}${themeBlock}\n\n/* Page styles */\n${editor.getCss()}`;
     await api.savePage(name, { project, html, css, meta });
     if (current === name) {
       lastKey = key;
@@ -264,6 +265,31 @@ window.addEventListener('beforeunload', (event) => {
 });
 
 // Online stylesheets that an imported page uses (for example web fonts) are loaded into the editor canvas too.
+export function cleanThemeOverrideCss(css) {
+  if (!css) return '';
+  return css
+    .replace(/h1,\s*h2,\s*h3,\s*h4[^{]*\{[^}]*\}/gi, '')
+    .replace(/^:root,\s*html,\s*(?:\r?\n)+/m, ':root, html, body {\n');
+}
+
+function syncTheme() {
+  const doc = editor.Canvas.getDocument();
+  if (!doc) return;
+  let styleEl = doc.getElementById('lp-theme-override');
+  if (meta.themeCss) {
+    const safeCss = cleanThemeOverrideCss(meta.themeCss);
+    meta.themeCss = safeCss;
+    if (!styleEl) {
+      styleEl = doc.createElement('style');
+      styleEl.id = 'lp-theme-override';
+      doc.head.append(styleEl);
+    }
+    styleEl.textContent = safeCss;
+  } else if (styleEl) {
+    styleEl.remove();
+  }
+}
+
 function syncHeadLinks() {
   const head = editor.Canvas.getDocument()?.head;
   if (!head) return;
@@ -275,6 +301,7 @@ function syncHeadLinks() {
     link.dataset.lpHead = '1';
     head.append(link);
   }
+  syncTheme();
 }
 
 // ---------- pages and tabs ----------
@@ -826,6 +853,563 @@ async function applyAi(mode, { html, css, hint, allowedUrls }) {
   };
 }
 
+function generateThemeCss(profile) {
+  if (!profile) return '';
+  const c = profile.colors || {};
+  const f = profile.fonts || {};
+  const b = profile.buttons || {};
+  const g = profile.general || {};
+
+  const primary = c.primary || '#2457f5';
+  const primaryDark = c.secondary || primary;
+  const primarySoft = c.accent ? `${c.accent}22` : '#e8eefe';
+  const accent = c.accent || '#ffb703';
+  const ink = c.text || '#0e1a2b';
+  const text = c.textMuted || c.text || '#3a4a5d';
+  const muted = c.textMuted || '#68788c';
+  const paper = c.background || '#ffffff';
+  const mist = c.surface || '#f1f4f9';
+  const line = mist && mist !== '#ffffff' ? mist : '#e1e7ef';
+  const radius = g.borderRadius || b.borderRadius || '16px';
+  const btnRadius = b.borderRadius || radius || '999px';
+  const fontHead = f.heading ? `'${f.heading}', system-ui, -apple-system, sans-serif` : '';
+  const fontBody = f.body ? `'${f.body}', system-ui, -apple-system, sans-serif` : '';
+
+  const btnBg = b.backgroundImage || primary;
+  const btnColor = b.color || '#ffffff';
+  const btnShadow = b.boxShadow ? `box-shadow: ${b.boxShadow} !important;` : '';
+
+  const heroComp = profile.components?.hero || {};
+  const heroBgImg = heroComp.backgroundImage || '';
+  const heroOverlay = heroComp.overlayImage || '';
+  const heroBgColor = heroComp.background || heroComp.overlayColor || '';
+  let heroBg = '';
+  if (heroOverlay && heroBgImg) {
+    heroBg = `${heroOverlay}, ${heroBgImg}`;
+  } else if (heroBgImg) {
+    heroBg = heroBgImg;
+  } else if (heroBgColor) {
+    heroBg = heroBgColor;
+  }
+  const heroHeadingColor = heroComp.headingColor || '';
+  const isHeroDark = heroHeadingColor === '#ffffff' || heroBgColor === '#1a032b' || heroHeadingColor?.toLowerCase() === '#fff';
+
+  return `/* Applied Design Theme: ${escapeHtml(profile.name || 'Custom')} */
+:root, html, body {
+  --lp-primary: ${primary} !important;
+  --lp-primary-dark: ${primaryDark} !important;
+  --lp-primary-soft: ${primarySoft} !important;
+  --lp-accent: ${accent} !important;
+  --lp-ink: ${ink} !important;
+  --lp-text: ${text} !important;
+  --lp-muted: ${muted} !important;
+  --lp-paper: ${paper} !important;
+  --lp-mist: ${mist} !important;
+  --lp-line: ${line} !important;
+  --lp-radius: ${radius} !important;
+  ${fontHead ? `--lp-font-head: ${fontHead} !important;` : ''}
+  ${fontBody ? `--lp-font-body: ${fontBody} !important;` : ''}
+}
+
+body {
+  background-color: ${paper} !important;
+}
+
+.lp-navbar {
+  background-color: ${paper} !important;
+  border-bottom-color: ${line} !important;
+}
+
+.lp-section:not(.lp-dark):not(.lp-tint),
+.lp-strip:not(.lp-dark):not(.lp-tint) {
+  background-color: ${paper} !important;
+}
+
+.lp-tint, .lp-strip.lp-tint {
+  background-color: ${mist} !important;
+}
+
+.lp-dark, .lp-strip.lp-dark {
+  background-color: ${ink} !important;
+  color: ${paper} !important;
+}
+
+.lp-hero:not(.lp-hero-dark) {
+  ${heroBg ? `background: ${heroBg} !important;` : `background-color: ${paper} !important;`}
+  ${heroBg && heroBg.includes('url(') ? `background-size: cover !important; background-position: center !important;` : ''}
+  ${isHeroDark ? `color: #ffffff !important;` : ''}
+}
+
+.lp-hero h1, .lp-hero h2, .lp-hero h3, .lp-hero h4, .lp-hero p, .lp-hero .lp-lead, .lp-hero .lp-note, .lp-hero .lp-hero-title, .lp-hero .lp-hero-subtitle {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+${heroHeadingColor ? `
+.lp-hero:not(.lp-hero-dark) h1,
+.lp-hero:not(.lp-hero-dark) h2,
+.lp-hero:not(.lp-hero-dark) .lp-hero-title {
+  color: ${heroHeadingColor} !important;
+}
+` : ''}
+
+${isHeroDark ? `
+.lp-hero:not(.lp-hero-dark) p,
+.lp-hero:not(.lp-hero-dark) .lp-lead,
+.lp-hero:not(.lp-hero-dark) .lp-hero-subtitle {
+  color: rgba(255, 255, 255, 0.88) !important;
+}
+` : ''}
+
+.lp-hero.lp-hero-dark, .lp-hero-dark {
+  background: linear-gradient(140deg, ${ink} 0%, ${primaryDark} 58%, ${primary} 135%) !important;
+}
+
+.lp-cta {
+  background: linear-gradient(140deg, ${primaryDark} 0%, ${primary} 100%) !important;
+}
+
+a:not(.lp-btn) {
+  color: ${primary} !important;
+}
+
+.lp-btn-primary, button.lp-btn-primary, .lp-btn.lp-btn-primary, .lp-btn.lp-primary, a.lp-btn:not(.lp-btn-ghost) {
+  background: ${btnBg} !important;
+  color: ${btnColor} !important;
+  border-radius: ${btnRadius} !important;
+  ${btnShadow}
+}
+
+.lp-btn-primary:hover, button.lp-btn-primary:hover, .lp-btn.lp-primary:hover, a.lp-btn:not(.lp-btn-ghost):hover {
+  filter: brightness(0.92);
+}
+
+.lp-btn {
+  border-radius: ${btnRadius} !important;
+}
+
+.lp-btn-ghost {
+  color: ${ink} !important;
+  border-color: ${line} !important;
+  border-radius: ${btnRadius} !important;
+}
+
+.lp-btn-ghost:hover {
+  border-color: ${ink} !important;
+}
+
+.lp-card {
+  background-color: ${paper} !important;
+  border-color: ${line} !important;
+  border-radius: ${radius} !important;
+}
+
+.lp-pill {
+  background-color: ${primarySoft} !important;
+  color: ${primary} !important;
+}
+
+.lp-icon {
+  background-color: ${primarySoft} !important;
+  color: ${primary} !important;
+}
+
+.lp-logo, .lp-marquee-item {
+  color: ${muted} !important;
+  ${fontHead ? `font-family: ${fontHead} !important;` : ''}
+}
+`;
+}
+
+function applyThemeToPage(profile) {
+  if (!current) {
+    alert('Please open or create a page first.');
+    return;
+  }
+  if (!profile) return;
+
+  meta.themeProfile = profile.name;
+  meta.themeCss = generateThemeCss(profile);
+
+  const loadFont = (fontName) => {
+    if (!fontName) return;
+    const clean = fontName.replace(/['"]/g, '').trim();
+    if (!clean || clean === 'inherit' || clean === 'system-ui' || clean.includes('-apple-system')) return;
+    const url = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(clean)}:wght@400;600;700&display=swap`;
+    meta.headLinks = meta.headLinks || [];
+    if (!meta.headLinks.includes(url)) meta.headLinks.push(url);
+  };
+
+  const f = profile.fonts || {};
+  if (f.heading) loadFont(f.heading);
+  if (f.body) loadFont(f.body);
+  if (Array.isArray(f.all)) f.all.forEach(loadFont);
+
+  syncHeadLinks();
+  syncTheme();
+
+  // Update components with hardcoded old default or previous profile colors in canvas
+  const primary = profile.colors?.primary;
+  const primaryDark = profile.colors?.secondary || primary;
+  const paper = profile.colors?.background || '#ffffff';
+  const mist = profile.colors?.surface || '#f1f4f9';
+  const line = mist && mist !== '#ffffff' ? mist : '#e1e7ef';
+  const ink = profile.colors?.text || '#0e1a2b';
+  const text = profile.colors?.textMuted || profile.colors?.text || '#3a4a5d';
+  const b = profile.buttons || {};
+  const btnBg = b.backgroundImage || primary;
+  const btnColor = b.color || '#ffffff';
+  const radius = profile.general?.borderRadius || b.borderRadius || '16px';
+  const btnRadius = b.borderRadius || radius || '999px';
+  const fontHead = f.heading ? `'${f.heading}', system-ui, -apple-system, sans-serif` : '';
+  const fontBody = f.body ? `'${f.body}', system-ui, -apple-system, sans-serif` : '';
+
+  const heroComp = profile.components?.hero || {};
+  const heroBgImg = heroComp.backgroundImage || '';
+  const heroOverlay = heroComp.overlayImage || '';
+  const heroBgColor = heroComp.background || heroComp.overlayColor || '';
+  let heroBg = '';
+  if (heroOverlay && heroBgImg) {
+    heroBg = `${heroOverlay}, ${heroBgImg}`;
+  } else if (heroBgImg) {
+    heroBg = heroBgImg;
+  } else if (heroBgColor) {
+    heroBg = heroBgColor;
+  }
+  const heroHeadingColor = heroComp.headingColor || '';
+
+  const oldColors = [
+    '#2457f5',
+    '#860edf',
+    '#533afd',
+    '#6366f1',
+    '#1e9197',
+    meta.themeColors?.primary,
+    meta.themeColors?.secondary,
+  ].filter(Boolean);
+
+  const oldSurfaces = [
+    '#f8faff',
+    '#faf7ff',
+    '#f1f4f9',
+    '#ecfcfd',
+    '#f8fafd',
+    meta.themeColors?.surface,
+  ].filter(Boolean);
+
+  const replaceColors = (val) => {
+    if (typeof val !== 'string') return val;
+    let res = val;
+    if (primary) {
+      for (const old of oldColors) {
+        if (old && res.toLowerCase().includes(old.toLowerCase())) {
+          res = res.replace(new RegExp(old, 'gi'), primary);
+        }
+      }
+    }
+    if (mist) {
+      for (const old of oldSurfaces) {
+        if (old && res.toLowerCase().includes(old.toLowerCase())) {
+          res = res.replace(new RegExp(old, 'gi'), mist);
+        }
+      }
+    }
+    return res;
+  };
+
+  const updateComp = (comp) => {
+    const style = comp.getStyle() || {};
+    let changed = false;
+
+    // Check if this component is a section
+    const tag = comp.get('tagName')?.toLowerCase();
+    const classes = comp.getClasses() || [];
+    const isSec = comp.get('type') === 'section' || tag === 'section' || classes.includes('lp-section');
+    if (isSec) {
+      if (classes.includes('lp-tint')) {
+        style['background-color'] = mist;
+        delete style['background-image'];
+        delete style.background;
+      } else if (classes.includes('lp-dark')) {
+        style['background-color'] = ink;
+        delete style['background-image'];
+        delete style.background;
+      } else if (classes.includes('lp-hero')) {
+        if (classes.includes('lp-hero-dark')) {
+          style.background = `linear-gradient(140deg, ${ink} 0%, ${primaryDark} 58%, ${primary} 135%)`;
+        } else if (heroBg) {
+          style.background = heroBg;
+          if (heroBg.includes('url(')) {
+            style['background-size'] = 'cover';
+            style['background-position'] = 'center';
+          }
+        } else {
+          style['background-color'] = paper;
+          delete style['background-image'];
+          delete style.background;
+        }
+      } else {
+        style['background-color'] = paper;
+        delete style['background-image'];
+        delete style.background;
+      }
+      changed = true;
+    }
+
+    // Buttons
+    const isBtn = classes.includes('lp-btn') || classes.includes('lp-btn-primary') || classes.includes('lp-primary') || tag === 'button' || (tag === 'a' && classes.some(c => c.includes('btn')));
+    if (isBtn) {
+      const isPrimary = classes.includes('lp-btn-primary') || classes.includes('lp-primary') || (!classes.includes('lp-btn-ghost') && !classes.includes('ghost'));
+      if (isPrimary) {
+        if (!classes.includes('lp-btn-primary')) comp.addClass('lp-btn-primary');
+        if (!classes.includes('lp-btn')) comp.addClass('lp-btn');
+        style.background = btnBg;
+        style['background-color'] = primary;
+        style.color = btnColor;
+        style['border-radius'] = btnRadius;
+        changed = true;
+      } else {
+        style.color = ink;
+        style['border-color'] = line;
+        style['border-radius'] = btnRadius;
+        changed = true;
+      }
+    }
+
+    // Headings
+    const isHeading = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag);
+    if (isHeading) {
+      if (style.background || style['background-color'] || style['background-image']) {
+        delete style.background;
+        delete style['background-color'];
+        delete style['background-image'];
+        delete style['background-size'];
+        delete style['background-position'];
+        changed = true;
+      }
+      if (fontHead) {
+        style['font-family'] = fontHead;
+        changed = true;
+      }
+      const insideHero = comp.closest?.('.lp-hero');
+      if (insideHero && heroHeadingColor) {
+        style.color = heroHeadingColor;
+        changed = true;
+      } else {
+        const cur = (style.color || '').toLowerCase().trim();
+        if (!cur || ['#111', '#111111', '#1a1a1a', '#000', '#000000', '#0e1a2b', '#222', '#333'].includes(cur) || oldColors.some(oc => cur === oc.toLowerCase())) {
+          style.color = ink;
+          changed = true;
+        }
+      }
+    }
+
+    // Paragraphs and body
+    if (tag === 'p' || tag === 'li') {
+      if (!isBtn && !classes.includes('lp-card') && !classes.includes('lp-pill') && !classes.includes('lp-badge')) {
+        if (style.background || style['background-color'] || style['background-image']) {
+          delete style.background;
+          delete style['background-color'];
+          delete style['background-image'];
+          delete style['background-size'];
+          delete style['background-position'];
+          changed = true;
+        }
+      }
+      if (fontBody) {
+        style['font-family'] = fontBody;
+        changed = true;
+      }
+      const cur = (style.color || '').toLowerCase().trim();
+      if (['#666', '#666666', '#444', '#444444', '#3a4a5d', '#5d7375', '#717182', '#64748d', '#474c61'].includes(cur)) {
+        style.color = text;
+        changed = true;
+      }
+    }
+
+    for (const [key, val] of Object.entries(style)) {
+      const updated = replaceColors(val);
+      if (updated !== val) {
+        style[key] = updated;
+        changed = true;
+      }
+    }
+    if (changed) comp.setStyle(style);
+
+    const attrs = comp.getAttributes() || {};
+    if (attrs.style) {
+      const updatedAttr = replaceColors(attrs.style);
+      if (updatedAttr !== attrs.style) {
+        attrs.style = updatedAttr;
+        comp.setAttributes(attrs);
+      }
+    }
+
+    comp.components().forEach(updateComp);
+  };
+
+  editor.getWrapper().components().forEach(updateComp);
+
+  // Also update GrapesJS CssComposer rules
+  const cssRules = editor.Css.getAll();
+  cssRules.forEach((rule) => {
+    const rStyle = rule.getStyle() || {};
+    let changed = false;
+    for (const [key, val] of Object.entries(rStyle)) {
+      const updated = replaceColors(val);
+      if (updated !== val) {
+        rStyle[key] = updated;
+        changed = true;
+      }
+    }
+    const sel = rule.selectorsToString();
+    const hasDescendant = sel.includes(' ') || sel.includes('>') || /\b(h[1-6]|p|lead|note|title|subtitle|span|a|li)\b/i.test(sel);
+    const isTextRule = /\b(h[1-6]|p|lead|note)\b/i.test(sel) && !sel.includes('.lp-btn') && !sel.includes('.lp-pill') && !sel.includes('.lp-badge') && !sel.includes('.lp-card');
+
+    // Clean up any backgrounds that were accidentally set on text rules
+    if (isTextRule) {
+      if (rStyle.background || rStyle['background-color'] || rStyle['background-image']) {
+        delete rStyle.background;
+        delete rStyle['background-color'];
+        delete rStyle['background-image'];
+        delete rStyle['background-size'];
+        delete rStyle['background-position'];
+        changed = true;
+      }
+    }
+
+    // Section rules: ONLY match if it's the section element itself, NOT child elements
+    const isHeroDarkRule = sel.includes('.lp-hero-dark') && !sel.includes(':not(.lp-hero-dark)');
+    const isHeroSection = sel.includes('.lp-hero') && !hasDescendant && !isHeroDarkRule;
+
+    if (isHeroSection) {
+      if (heroBg) {
+        rStyle['background'] = heroBg;
+        if (heroBg.includes('url(')) {
+          rStyle['background-size'] = 'cover';
+          rStyle['background-position'] = 'center';
+        }
+      } else {
+        rStyle['background-color'] = paper;
+        delete rStyle['background-image'];
+        delete rStyle.background;
+      }
+      changed = true;
+    } else if (!hasDescendant && (sel.includes('.lp-section:not') || sel === '.lp-section' || sel === '.lp-section.lp-hero')) {
+      rStyle['background-color'] = paper;
+      delete rStyle['background-image'];
+      delete rStyle.background;
+      changed = true;
+    } else if (!hasDescendant && sel.includes('.lp-tint')) {
+      rStyle['background-color'] = mist;
+      changed = true;
+    }
+
+    if (sel.includes('.lp-btn-primary') || sel.includes('.lp-primary')) {
+      rStyle['background'] = btnBg;
+      rStyle['background-color'] = primary;
+      rStyle['color'] = btnColor;
+      rStyle['border-radius'] = btnRadius;
+      changed = true;
+    }
+
+    // Check ID rules (#id) from AI sections or canvas components
+    if (sel.startsWith('#')) {
+      const compId = sel.replace(/^#/, '').trim();
+      const comp = editor.getWrapper().find(`#${compId}`)[0];
+      if (comp) {
+        const tag = comp.get('tagName')?.toLowerCase();
+        const classes = comp.getClasses() || [];
+        const isBtn = classes.includes('lp-btn') || classes.includes('lp-btn-primary') || classes.includes('lp-primary') || tag === 'button' || (tag === 'a' && classes.some(c => c.includes('btn')));
+        if (isBtn) {
+          const isPrimary = classes.includes('lp-btn-primary') || classes.includes('lp-primary') || (!classes.includes('lp-btn-ghost') && !classes.includes('ghost'));
+          if (isPrimary) {
+            rStyle['background'] = btnBg;
+            rStyle['background-color'] = primary;
+            rStyle['color'] = btnColor;
+            rStyle['border-radius'] = btnRadius;
+            changed = true;
+          } else {
+            rStyle['color'] = ink;
+            rStyle['border-color'] = line;
+            rStyle['border-radius'] = btnRadius;
+            changed = true;
+          }
+        } else if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+          // Headings should never have background boxes
+          if (rStyle.background || rStyle['background-color'] || rStyle['background-image']) {
+            delete rStyle.background;
+            delete rStyle['background-color'];
+            delete rStyle['background-image'];
+            delete rStyle['background-size'];
+            delete rStyle['background-position'];
+            changed = true;
+          }
+          if (fontHead) {
+            rStyle['font-family'] = fontHead;
+            changed = true;
+          }
+          const insideHero = comp.closest?.('.lp-hero');
+          if (insideHero && heroHeadingColor) {
+            rStyle.color = heroHeadingColor;
+            changed = true;
+          } else {
+            const cur = (rStyle.color || '').toLowerCase().trim();
+            if (!cur || ['#111', '#111111', '#1a1a1a', '#000', '#000000', '#0e1a2b', '#222', '#333'].includes(cur) || oldColors.some(oc => cur === oc.toLowerCase())) {
+              rStyle.color = ink;
+              changed = true;
+            }
+          }
+        } else if (tag === 'p' || tag === 'li') {
+          // Paragraphs should never have background boxes
+          if (rStyle.background || rStyle['background-color'] || rStyle['background-image']) {
+            delete rStyle.background;
+            delete rStyle['background-color'];
+            delete rStyle['background-image'];
+            delete rStyle['background-size'];
+            delete rStyle['background-position'];
+            changed = true;
+          }
+          if (fontBody) {
+            rStyle['font-family'] = fontBody;
+            changed = true;
+          }
+          const cur = (rStyle.color || '').toLowerCase().trim();
+          if (['#666', '#666666', '#444', '#444444', '#3a4a5d', '#5d7375', '#717182', '#64748d', '#474c61'].includes(cur)) {
+            rStyle.color = text;
+            changed = true;
+          }
+        } else if (tag === 'section' || classes.includes('lp-section')) {
+          if (fontBody) {
+            rStyle['font-family'] = fontBody;
+            changed = true;
+          }
+          if (!classes.includes('lp-dark') && !classes.includes('lp-tint') && !classes.includes('lp-hero')) {
+            rStyle['background-color'] = paper;
+            changed = true;
+          }
+        }
+      }
+    }
+
+    if (changed) rule.setStyle(rStyle);
+  });
+
+  meta.themeColors = {
+    primary,
+    secondary: profile.colors?.secondary || primary,
+    accent: profile.colors?.accent,
+    background: paper,
+    surface: mist,
+    text: ink,
+  };
+
+  dirty = true;
+  scheduleSave();
+  setStatus(`Applied "${profile.name}" theme.`, 'good');
+}
+
 let analyzer = null;
 const ai = initAi({
   pane: $('pane-ai'),
@@ -839,6 +1423,7 @@ analyzer = initAnalyzer({
   pane: $('pane-analyzer'),
   dialog: $('analyzer-dialog'),
   onProfileChange: () => ai.updateProfile?.(),
+  onApplyTheme: applyThemeToPage,
 });
 
 // ---------- toolbar, rail, panels ----------
@@ -942,7 +1527,11 @@ editor.on('load', async () => {
     pagesDir = config.pagesDir;
     designSystemCss = css;
     motionJs = motion;
-    initAddPanel(editor, { container: $('pane-add'), getDesignCss: () => designSystemCss });
+    initAddPanel(editor, {
+      container: $('pane-add'),
+      getDesignCss: () => designSystemCss,
+      getProfile: () => analyzer?.getActiveProfile() || null,
+    });
 
     const fonts = document.createElement('link');
     fonts.rel = 'stylesheet';

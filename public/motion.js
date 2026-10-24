@@ -66,13 +66,26 @@
   }
 
   function prepareEntrance(el) {
-    setProp(el, 'transition', entranceTransition(el));
+    setProp(el, 'transition', 'none');
     setProp(el, '--lp-dist', num(el.getAttribute('data-enter-distance'), 40) + 'px');
+    el.classList.remove('lp-in');
+    void el.offsetWidth;
+    setProp(el, 'transition', entranceTransition(el));
   }
 
   function playEntrance(el) {
-    el.classList.add('lp-in');
-    var total = (num(el.getAttribute('data-enter-duration'), 0.8) + num(el.getAttribute('data-enter-delay'), 0)) * 1000 + 60;
+    var win = el.ownerDocument.defaultView;
+    var applyIn = function () {
+      el.classList.add('lp-in');
+    };
+    if (win && win.requestAnimationFrame) {
+      win.requestAnimationFrame(function () {
+        win.requestAnimationFrame(applyIn);
+      });
+    } else {
+      applyIn();
+    }
+    var total = (num(el.getAttribute('data-enter-duration'), 0.8) + num(el.getAttribute('data-enter-delay'), 0)) * 1000 + 100;
     setTimeout(function () {
       if (!el.classList.contains('lp-in')) return;
       // The entrance is over: hand transitions back, so hover effects on the same element work normally.
@@ -109,7 +122,7 @@
           }
         });
       },
-      { threshold: 0.15 }
+      { threshold: 0 }
     );
     els.forEach(function (el) {
       prepareEntrance(el);

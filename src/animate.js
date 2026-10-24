@@ -89,6 +89,8 @@ export function initAnimate(editor, { container, openAnimate, onPreview }) {
     }
     if (remove.length) comp.removeAttributes(remove);
     if (Object.keys(add).length) comp.addAttributes(add);
+    editor.trigger('change:canvasOffset');
+    editor.trigger('update');
   };
   const isStrip = () => hasClass(comp, 'lp-strip');
 
@@ -285,6 +287,9 @@ export function initAnimate(editor, { container, openAnimate, onPreview }) {
       field('Effect', select(ENTER_TYPES, type, (v) => {
         setAttrs({ 'data-enter': v, ...(v ? {} : { 'data-enter-duration': '', 'data-enter-delay': '', 'data-enter-ease': '', 'data-enter-distance': '', 'data-enter-repeat': '' }) });
         render();
+        if (v && comp) {
+          setTimeout(() => win().LPMotion?.replay(comp.getEl()), 60);
+        }
       })),
     );
     if (type) {

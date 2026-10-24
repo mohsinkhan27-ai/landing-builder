@@ -25,14 +25,16 @@ Switch to the tablet or phone icon at the top to see this. To change the order o
 ## Using it
 
 - **Add** (left rail): pick a category, then drag an item onto the page, or click it to drop it in. Search finds anything by name.
+  Click **Generate section with AI** at the top of the Add panel to describe and generate custom sections on the fly (e.g. pricing tables, heroes, testimonials).
   Categories: Text, Buttons, Image and video, Boxes and shapes, Icons, Cards, Forms, Interactive (FAQ accordion, tabs, countdown, custom HTML),
-  Strips, and Ready-made sections. Ready-made sections (heroes, pricing, testimonials, footers and so on) drop in as whole strips between other strips.
+  Strips, and Ready-made sections (including an infinite-scrolling **Logo marquee**). Ready-made sections drop in as whole strips between other strips.
   The panel closes when you click on the page, and reopens from the left rail.
 - **Move and resize:** press on an element and drag. Pink guides appear when edges or centers line up with the strip or other elements
   (hold **Alt** to turn snapping off). Use the handles around the selected element to resize. Arrow keys nudge by 1 pixel, **Shift + arrow** by 10.
   Drag the bottom handle of a strip to make it taller or shorter.
 - **Edit text:** click any text and the **Edit text** window opens. Font, size, color, bold, italic, underline, strikethrough, alignment,
   line height, letter spacing, capitals, exact position and width, and bring forward / send back, all in one place.
+  Use **Magic Rewrite** (✨) to enhance selected text or headlines with AI presets (punchy headline, shorten, persuasive, professional, fix grammar) or custom prompts.
   Double-click the text to type, and select words to format only those words. The window can be dragged out of the way.
 - **FAQ:** add the FAQ accordion from Interactive. Select it and the **Questions and answers** window opens: type each question and answer,
   add new ones, move them up or down, or delete them. You can also type straight into the page.
@@ -136,7 +138,8 @@ Click **Analyze** in the left rail to extract the design system of any external 
    - **Spacing & general look:** section paddings, container widths, border radii, box shadows, line heights.
 3. Review the extracted tokens and save as a named profile (e.g. `stripe-style`). Saved profiles are persisted in `data/design-profiles.json`.
 4. When a profile is active, an indicator badge appears in the **AI designer** panel. Whenever you ask the AI to generate or modify a page, the full analyzed design profile is automatically attached to the AI prompt so the resulting page inherits that site's branding, colors, fonts and button styles.
-5. **Export & Import:**
+5. **1-Click Re-theme:** With any design profile active, click **Apply theme to page** to immediately map that profile's colors, fonts, and border radii onto the currently open page.
+6. **Export & Import:**
    - **Export a profile:** Click the download icon next to any saved profile (or on the active profile card) to download `<profile-name>.design-profile.json`.
    - **Export all:** Click **Export all** in the Saved profiles section to download every saved profile in a single `design-profiles.json`.
    - **Import:** Click **Import** in the Site Analyzer panel to upload any JSON profile file (drag-and-drop or file picker) or paste JSON directly. Includes live validation, color swatch preview, and conflict resolution (overwrite or save as a copy).

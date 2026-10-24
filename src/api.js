@@ -35,6 +35,9 @@ export const saveDesignProfile = (name, profile) => request(`/api/design-profile
 export const deleteDesignProfile = (name) => request(`/api/design-profiles/${enc(name)}`, { method: 'DELETE' });
 export const importDesignProfiles = (payload) => request('/api/design-profiles/import', json('POST', payload));
 
+export const aiRewrite = (text, instruction) => request('/api/ai/rewrite', json('POST', { text, instruction }));
+export const aiGenerateSection = (prompt, profile) => request('/api/ai/section', json('POST', { prompt, profile }));
+
 // Uploads files into a page's assets folder. Uses XMLHttpRequest so large videos can report progress (0 to 1).
 export function uploadAssets(name, files, onProgress) {
   const form = new FormData();

@@ -2,7 +2,7 @@
 // spacing, buttons) and save it as a profile. The active profile is attached to AI prompts
 // so generated pages match the analyzed site's look and feel.
 
-export function initAnalyzer({ pane, dialog, onProfileChange }) {
+export function initAnalyzer({ pane, dialog, onProfileChange, onApplyTheme }) {
   let profiles = [];
   let activeProfile = null; // the currently selected profile (full object)
   let activeProfileName = localStorage.getItem('landing-builder:design-profile') || '';
@@ -161,6 +161,15 @@ export function initAnalyzer({ pane, dialog, onProfileChange }) {
           text: '✕',
           title: 'Deactivate this profile',
           onclick: () => selectProfile(''),
+        }),
+      ),
+      h('div', { class: 'sa-active-bar' },
+        h('button', {
+          type: 'button',
+          class: 'tb-btn primary sa-apply-theme-btn',
+          title: 'Apply this profile\'s colors, fonts and style variables to the open page',
+          html: '<i class="fa fa-paint-brush" style="margin-right:6px"></i>Apply theme to page',
+          onclick: () => onApplyTheme?.(activeProfile),
         }),
       ),
       renderProfilePreview(activeProfile),

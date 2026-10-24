@@ -331,4 +331,132 @@ export function mountAi(app, { DATA_DIR, wrap, HttpError }) {
     }
     res.end();
   });
+
+  async function generateText(cfg, { system, messages, maxTokens = 2000 }, timeoutMs = 120000) {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), timeoutMs);
+    try {
+      const k = kind(cfg.id);
+      if (k === 'OpenAI') {
+        const init = {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}) },
+          body: JSON.stringify({
+            model: cfg.model,
+            max_tokens: maxTokens,
+            stream: false,
+            messages: [{ role: 'system', content: system }, ...mergeTurns(messages)],
+          }),
+        };
+        let res = await call(`${cfg.baseUrl}/chat/completions`, init, cfg.apiKey, abort.signal);
+        if ((res.headers.get('content-type') || '').includes('text/html') && new URL(cfg.baseUrl).pathname === '/') {
+          res = await call(`${cfg.baseUrl}/v1/chat/completions`, init, cfg.apiKey, abort.signal);
+        }
+        const json = await res.json();
+        if (json.error) throw new ProviderError(redact(json.error.message || JSON.stringify(json.error), cfg.apiKey));
+        return json.choices?.[0]?.message?.content || '';
+      } else if (k === 'Anthropic') {
+        const res = await call(
+          `${cfg.baseUrl}/v1/messages`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({ model: cfg.model, max_tokens: maxTokens, stream: false, system, messages: mergeTurns(messages) }),
+          },
+          cfg.apiKey,
+          abort.signal,
+        );
+        const json = await res.json();
+        if (json.type === 'error') throw new ProviderError(redact(json.error?.message || 'The provider reported an error.', cfg.apiKey));
+        return (json.content || []).map((c) => c.text || '').join('');
+      } else if (k === 'Gemini') {
+        const res = await call(
+          `${cfg.baseUrl}/v1beta/models/${encodeURIComponent(cfg.model)}:generateContent`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: system }] },
+              contents: mergeTurns(messages).map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+              generationConfig: { maxOutputTokens: maxTokens },
+            }),
+          },
+          cfg.apiKey,
+          abort.signal,
+        );
+        const json = await res.json();
+        if (json.error) throw new ProviderError(redact(json.error.message || 'The provider reported an error.', cfg.apiKey));
+        return (json.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
+      }
+      return '';
+    } catch (err) {
+      if (err instanceof ProviderError) throw err;
+      if (err.name === 'AbortError') throw new ProviderError('The request took too long and timed out.');
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  app.post('/api/ai/rewrite', wrap(async (req, res) => {
+    const { text, instruction } = req.body || {};
+    if (!text || typeof text !== 'string') throw new HttpError(400, 'Provide text to rewrite.');
+    const settings = await load();
+    if (!settings.active) throw new HttpError(400, 'No AI provider connected. Open the AI panel and connect a provider first.');
+    const cfg = resolve(settings, settings.active);
+    if (!cfg.model) throw new HttpError(400, 'Choose an AI model in the AI panel first.');
+
+    const system = 'You are an elite conversion-rate copywriter for landing pages. Rewrite the user\'s text according to their instruction. Return ONLY the rewritten text, with no quotes, formatting, or commentary.';
+    const messages = [
+      { role: 'user', content: `Text:\n${text}\n\nInstruction: ${instruction || 'Make it punchier, clearer, and more engaging for a high-converting landing page'}` }
+    ];
+
+    try {
+      const result = await generateText(cfg, { system, messages, maxTokens: 600 });
+      res.json({ ok: true, result: result.trim().replace(/^["']|["']$/g, '') });
+    } catch (err) {
+      if (err instanceof ProviderError) throw new HttpError(502, err.message);
+      throw err;
+    }
+  }));
+
+  app.post('/api/ai/section', wrap(async (req, res) => {
+    const { prompt, profile } = req.body || {};
+    if (!prompt || typeof prompt !== 'string') throw new HttpError(400, 'Provide a description for the section.');
+    const settings = await load();
+    if (!settings.active) throw new HttpError(400, 'No AI provider connected. Open the AI panel and connect a provider first.');
+    const cfg = resolve(settings, settings.active);
+    if (!cfg.model) throw new HttpError(400, 'Choose an AI model in the AI panel first.');
+
+    let system = `You are an expert landing page designer. Generate ONLY one clean, responsive, beautiful HTML section using the classes in the Landing Builder design system (lp-section, lp-container, lp-hero, lp-feature, lp-card, lp-btn, lp-btn-primary, etc.). Return ONLY the raw HTML starting with <section class="lp-section"> and ending with </section>. Do NOT use markdown code fences (no \`\`\`html). Do NOT include any <script> tags or inline JavaScript.
+
+CRITICAL DESIGN SYSTEM & THEMING RULES:
+1. NEVER use hardcoded hex color codes (e.g. do NOT write #2457f5, #860edf, #111, #fff, #faf7ff in style attributes).
+2. ALWAYS use Landing Builder design system classes and CSS variables so that the section automatically adapts when any theme is applied:
+   - Primary action buttons: class="lp-btn lp-btn-primary"
+   - Ghost / outline buttons: class="lp-btn lp-btn-ghost"
+   - Card / feature containers: class="lp-card"
+   - Subtle tinted backgrounds: class="lp-section lp-tint" (or background: var(--lp-mist))
+   - Standard light backgrounds: class="lp-section" (or background: var(--lp-paper))
+   - Dark high-contrast section: class="lp-section lp-dark"
+   - Badges / tags: class="lp-pill" or background: var(--lp-primary-soft), color: var(--lp-primary)
+   - Icons / highlights: color: var(--lp-primary)
+   - Headings: <h2>, <h3> naturally inherit var(--lp-font-head) and var(--lp-ink) (do NOT set inline font-family or color in style)
+   - Body text: <p> naturally inherits var(--lp-font-body) and var(--lp-text) (do NOT set inline font-family or color in style)
+   - Muted text: class="lp-muted" or color: var(--lp-muted)
+3. Do NOT add fixed pixel width or height on the <section>. Use <div class="lp-container"> for layout width and centering.`;
+
+    const messages = [
+      { role: 'user', content: `Create a single landing page section for: ${prompt}` }
+    ];
+
+    try {
+      let raw = await generateText(cfg, { system, messages, maxTokens: 2500 });
+      raw = raw.replace(/^```(?:html)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      res.json({ ok: true, html: raw });
+    } catch (err) {
+      if (err instanceof ProviderError) throw new HttpError(502, err.message);
+      throw err;
+    }
+  }));
 }

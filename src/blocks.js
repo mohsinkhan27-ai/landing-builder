@@ -161,6 +161,32 @@ export const BLOCKS = [
 
   // Social proof
   {
+    id: 'logo-marquee', label: 'Logo marquee (scrolling)', cat: CATS.proof, thumb: 'logos',
+    content:
+      `<section class="lp-section" style="padding-top:40px;padding-bottom:40px;overflow:hidden"><div class="lp-container">` +
+      `<p class="lp-logos-title">Trusted by industry leaders and over 10,000 teams</p></div>` +
+      `<div class="lp-marquee-wrap"><div class="lp-marquee">` +
+      `<div class="lp-marquee-track">` +
+      `<div class="lp-marquee-item"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg><span>Vertex</span></div>` +
+      `<div class="lp-marquee-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg><span>Globex</span></div>` +
+      `<div class="lp-marquee-item"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg><span>BoltHQ</span></div>` +
+      `<div class="lp-marquee-item"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m9 12 2 2 4-4"/></svg><span>Acme Corp</span></div>` +
+      `<div class="lp-marquee-item"><svg viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg><span>Pulse AI</span></div>` +
+      `<div class="lp-marquee-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg><span>Horizon</span></div>` +
+      `<div class="lp-marquee-item"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><span>Starlight</span></div>` +
+      `</div>` +
+      `<div class="lp-marquee-track" aria-hidden="true">` +
+      `<div class="lp-marquee-item"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg><span>Vertex</span></div>` +
+      `<div class="lp-marquee-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg><span>Globex</span></div>` +
+      `<div class="lp-marquee-item"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg><span>BoltHQ</span></div>` +
+      `<div class="lp-marquee-item"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m9 12 2 2 4-4"/></svg><span>Acme Corp</span></div>` +
+      `<div class="lp-marquee-item"><svg viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg><span>Pulse AI</span></div>` +
+      `<div class="lp-marquee-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg><span>Horizon</span></div>` +
+      `<div class="lp-marquee-item"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><span>Starlight</span></div>` +
+      `</div>` +
+      `</div></div></section>`,
+  },
+  {
     id: 'logo-strip', label: 'Logo strip', cat: CATS.proof, thumb: 'logos',
     content:
       `<section class="lp-section" style="padding-top:48px;padding-bottom:48px"><div class="lp-container">` +

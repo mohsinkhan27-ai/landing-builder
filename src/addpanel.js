@@ -7,21 +7,207 @@ const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
 const first = (result) => (Array.isArray(result) ? result[0] : result); // GrapesJS returns one component or a list
 
 // Ready-made sections become items too (they drop as whole strips, between existing ones).
-const SECTION_ITEMS = BLOCKS.map((b) => ({
-  id: `section-${b.id}`,
-  cat: 'sections',
-  group: b.cat.label,
-  label: b.label,
-  html: b.content,
-  w: 1100,
-}));
+const SECTION_ITEMS = [
+  {
+    id: 'section-ai-generator',
+    cat: 'sections',
+    group: 'AI Designer',
+    label: '✨ AI Section Generator',
+    html: '<section class="lp-section"><div class="lp-container"><div class="lp-card" style="text-align:center;padding:36px;border:2px dashed #c7d6fb;background:#f8faff"><b style="display:block;font-size:1.15rem;margin-bottom:6px;color:#2457f5">✨ AI Generated Section</b><span style="color:var(--lp-muted);font-size:0.95rem">Click or prompt to generate custom section</span></div></div></section>',
+    w: 1100,
+    isAiGenerator: true,
+  },
+  ...BLOCKS.map((b) => ({
+    id: `section-${b.id}`,
+    cat: 'sections',
+    group: b.cat.label,
+    label: b.label,
+    html: b.content,
+    w: 1100,
+  })),
+];
 
-export function initAddPanel(editor, { container, getDesignCss }) {
+export function openAiSectionDialog(dialog, { editor, getProfile }) {
+  if (!dialog) return;
+  dialog.replaceChildren();
+  const form = document.createElement('form');
+  form.method = 'dialog';
+  form.innerHTML = `
+    <h2>Generate Section with AI</h2>
+    <p class="hint">Describe the section you want to create (e.g. hero, pricing table, customer reviews, feature grid). It will be generated using the design system classes and inserted into your page.</p>
+    
+    <label for="ais-prompt">Describe your section</label>
+    <textarea id="ais-prompt" rows="3" placeholder="e.g. A 3-tier pricing table with Monthly / Annual toggle, popular badge on the middle tier, and checkmark feature lists" required></textarea>
+
+    <div class="ais-suggestions">
+      <span class="ais-sug-label">Quick ideas:</span>
+      <button type="button" class="ais-sug" data-sug="Split hero with headline, value proposition bullets, email signup form and app screenshot">🚀 Hero with Signup</button>
+      <button type="button" class="ais-sug" data-sug="3-tier pricing section with a 'Most Popular' badge and feature checklist">💳 3-Tier Pricing</button>
+      <button type="button" class="ais-sug" data-sug="3-column feature grid with colorful icon badges and subheadings">✨ 3-Column Features</button>
+      <button type="button" class="ais-sug" data-sug="Customer testimonials grid with star ratings, quotes, and client avatar cards">💬 Testimonial Cards</button>
+      <button type="button" class="ais-sug" data-sug="FAQ accordion section with 4 common questions and detailed answers">❓ FAQ Accordion</button>
+      <button type="button" class="ais-sug" data-sug="High-conversion call to action banner with dual action buttons">🎯 Call to Action</button>
+    </div>
+
+    <div class="ais-pos-row">
+      <label for="ais-position">Insert position:</label>
+      <select id="ais-position">
+        <option value="after">After selected section (or at bottom)</option>
+        <option value="top">At the very top of page</option>
+        <option value="bottom">At the very bottom of page</option>
+      </select>
+    </div>
+
+    <p class="ais-status" role="status"></p>
+
+    <div class="dialog-actions">
+      <button type="button" data-act="cancel">Cancel</button>
+      <button type="submit" class="primary" data-act="generate">Generate &amp; Insert</button>
+    </div>
+  `;
+
+  const promptInput = form.querySelector('#ais-prompt');
+  const posSelect = form.querySelector('#ais-position');
+  const status = form.querySelector('.ais-status');
+  const genBtn = form.querySelector('[data-act="generate"]');
+
+  form.querySelectorAll('.ais-sug').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      promptInput.value = btn.dataset.sug;
+      promptInput.focus();
+    });
+  });
+
+  form.querySelector('[data-act="cancel"]').addEventListener('click', () => dialog.close());
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const prompt = promptInput.value.trim();
+    if (!prompt) return;
+
+    genBtn.disabled = true;
+    genBtn.textContent = 'Generating…';
+    status.textContent = 'Creating section with AI designer…';
+    status.className = 'ais-status';
+
+    try {
+      const profile = getProfile?.();
+      const res = await fetch('/api/ai/section', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, profile }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Failed to generate section (${res.status})`);
+      let html = data.html;
+      if (!html || !html.trim()) throw new Error('AI returned empty section.');
+
+      // Normalize any hardcoded colors or background styles so the section is 100% theme-adaptive
+      const primaryColor = profile?.colors?.primary;
+      const surfaceColor = profile?.colors?.surface;
+      if (primaryColor) {
+        html = html.replaceAll(primaryColor, 'var(--lp-primary)');
+      }
+      if (surfaceColor) {
+        html = html.replaceAll(surfaceColor, 'var(--lp-mist)');
+      }
+
+      // Parse with DOMParser to strip hardcoded styles that block theming
+      try {
+        const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+        // Remove hardcoded font-family so elements naturally inherit theme fonts
+        doc.querySelectorAll('*').forEach((elem) => {
+          if (elem.style.fontFamily) elem.style.fontFamily = '';
+          if (elem.getAttribute('style') === '') elem.removeAttribute('style');
+        });
+
+        // Normalize buttons: ensure lp-btn and lp-btn-primary classes
+        doc.querySelectorAll('a, button').forEach((btn) => {
+          const cls = btn.className || '';
+          if (cls.includes('lp-btn') || cls.includes('btn') || cls.includes('primary')) {
+            if (!btn.classList.contains('lp-btn')) btn.classList.add('lp-btn');
+            if (btn.classList.contains('lp-primary') || (!btn.classList.contains('lp-btn-ghost') && !btn.classList.contains('ghost'))) {
+              btn.classList.add('lp-btn-primary');
+              btn.classList.remove('lp-primary');
+              btn.style.background = '';
+              btn.style.backgroundColor = '';
+              btn.style.color = '';
+            } else {
+              btn.classList.add('lp-btn-ghost');
+            }
+            if (btn.getAttribute('style') === '') btn.removeAttribute('style');
+          }
+        });
+
+        // Strip default heading colors (#111, #000, #1a1a1a, etc.) so they inherit theme ink
+        doc.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((h) => {
+          const col = (h.style.color || '').toLowerCase();
+          if (['#111', '#111111', '#1a1a1a', '#000', '#000000', '#222', '#333'].includes(col)) {
+            h.style.color = '';
+          }
+          if (h.getAttribute('style') === '') h.removeAttribute('style');
+        });
+
+        // Ensure <section> doesn't have hardcoded background styles unless it's dark
+        doc.querySelectorAll('section').forEach((sec) => {
+          if (!sec.classList.contains('lp-dark')) {
+            sec.style.background = '';
+            sec.style.backgroundColor = '';
+          }
+          if (sec.getAttribute('style') === '') sec.removeAttribute('style');
+        });
+
+        html = doc.body.innerHTML;
+      } catch {
+        // fallback regex cleanup
+        html = html.replace(/(<section[^>]*?)\s+style="[^"]*background(?:-color)?:[^;"]+;?[^"]*"/gi, '$1');
+      }
+
+      const wrapper = editor.getWrapper();
+      const pos = posSelect.value;
+      let at = wrapper.components().length;
+
+      if (pos === 'top') {
+        at = 0;
+      } else if (pos === 'after') {
+        const selected = editor.getSelected();
+        if (selected) {
+          let top = selected;
+          while (top.parent() && top.parent() !== wrapper) top = top.parent();
+          if (top.parent() === wrapper) at = wrapper.components().indexOf(top) + 1;
+        }
+      }
+
+      const added = wrapper.components().add(html, { at });
+      dialog.close();
+
+      const comp = Array.isArray(added) ? added[0] : added;
+      if (comp) {
+        editor.select(comp);
+        setTimeout(() => {
+          comp.getEl()?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+        }, 150);
+      }
+    } catch (err) {
+      status.textContent = err.message;
+      status.className = 'ais-status bad';
+      genBtn.disabled = false;
+      genBtn.textContent = 'Generate & Insert';
+    }
+  });
+
+  dialog.append(form);
+  dialog.showModal();
+  promptInput.focus();
+}
+
+export function initAddPanel(editor, { container, getDesignCss, getProfile }) {
   const ghost = document.getElementById('drag-ghost');
   const dropLine = document.getElementById('drop-line');
 
   container.innerHTML = `
     <div class="add-search"><input type="search" placeholder="Search elements" aria-label="Search elements"></div>
+    <div class="add-ai-bar"><button type="button" class="add-ai-btn" id="btn-add-ai-section">&#10024; Generate section with AI</button></div>
     <div class="add-body">
       <nav class="add-cats" aria-label="Categories"></nav>
       <div class="add-items"></div>
@@ -288,6 +474,10 @@ export function initAddPanel(editor, { container, getDesignCss }) {
   }
 
   function clickAdd(item) {
+    if (item.isAiGenerator) {
+      openAiSectionDialog(document.getElementById('ai-section-dialog'), { editor, getProfile });
+      return;
+    }
     if (isSection(item)) {
       const selected = editor.getSelected();
       let index = wrapper().components().length;
@@ -351,6 +541,10 @@ export function initAddPanel(editor, { container, getDesignCss }) {
   }
 
   function drop(item, event) {
+    if (item.isAiGenerator) {
+      openAiSectionDialog(document.getElementById('ai-section-dialog'), { editor, getProfile });
+      return;
+    }
     const flyout = document.getElementById('flyout');
     const fr = flyout.getBoundingClientRect();
     const overFlyout = !flyout.hidden && event.clientX < fr.right && event.clientY > fr.top;
@@ -407,6 +601,13 @@ export function initAddPanel(editor, { container, getDesignCss }) {
       node.addEventListener('pointermove', move);
       node.addEventListener('pointerup', up);
       node.addEventListener('pointercancel', cancel);
+    });
+  }
+
+  const aiSecBtn = container.querySelector('#btn-add-ai-section');
+  if (aiSecBtn) {
+    aiSecBtn.addEventListener('click', () => {
+      openAiSectionDialog(document.getElementById('ai-section-dialog'), { editor, getProfile });
     });
   }
 
